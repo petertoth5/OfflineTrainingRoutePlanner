@@ -1,6 +1,7 @@
 package com.routeplanner
 
 import android.content.Context
+import android.content.Context.MODE_PRIVATE
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
@@ -10,12 +11,12 @@ class DataManager(private val context: Context) {
 
     companion object {
         private const val OSM_DATA_FILE = "map.osm.pbf"
-        private const val DOWNLOAD_URL = "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
-        // Smaller test data - adjust URL based on target region
-        // Available: https://download.geofabrik.de/
+        private const val PREFS_NAME = "route_planner_prefs"
+        private const val PREFS_CURRENT_REGION = "current_region"
     }
 
     private val dataDir = File(context.cacheDir, "osm_data")
+    private val prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
     init {
         dataDir.mkdirs()
@@ -25,7 +26,21 @@ class DataManager(private val context: Context) {
 
     fun hasOsmData(): Boolean = getOsmDataFile().exists()
 
+    fun getCurrentRegion(): Region {
+        val regionName = prefs.getString(PREFS_CURRENT_REGION, null)
+        return if (regionName != null) {
+            RegionManager.getRegionByName(regionName) ?: RegionManager.getDefaultRegion()
+        } else {
+            RegionManager.getDefaultRegion()
+        }
+    }
+
+    fun setCurrentRegion(region: Region) {
+        prefs.edit().putString(PREFS_CURRENT_REGION, region.name).apply()
+    }
+
     fun downloadOsmData(
+        region: Region,
         onProgress: (Int) -> Unit,
         onComplete: () -> Unit,
         onError: (String) -> Unit
@@ -33,7 +48,7 @@ class DataManager(private val context: Context) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val file = getOsmDataFile()
-                val url = URL(DOWNLOAD_URL)
+                val url = URL(region.url)
                 val connection = url.openConnection()
                 val fileLength = connection.contentLength
 
@@ -57,6 +72,7 @@ class DataManager(private val context: Context) {
                     }
                 }
 
+                setCurrentRegion(region)
                 withContext(Dispatchers.Main) {
                     onComplete()
                 }
@@ -66,6 +82,23 @@ class DataManager(private val context: Context) {
                     onError(e.message ?: "Download failed")
                 }
             }
+        }
+    }
+
+    fun deleteOsmData(): Boolean {
+        return try {
+            getOsmDataFile().delete()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    fun getDataSizeKb(): Long {
+        return try {
+            getOsmDataFile().length() / 1024
+        } catch (e: Exception) {
+            0L
         }
     }
 

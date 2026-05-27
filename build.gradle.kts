@@ -29,7 +29,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("com.google.android.material:material:1.9.0")
-    implementation("com.google.android.gms:play-services-maps:18.2.0")
+    implementation("org.osmdroid:osmdroid-android:6.1.14")
     implementation("com.graphhopper:graphhopper-core:8.0")
     implementation("com.graphhopper:graphhopper-reader-osm:8.0")
     implementation("org.slf4j:slf4j-api:2.0.9")

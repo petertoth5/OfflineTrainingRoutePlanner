@@ -17,14 +17,6 @@
         android:marginBottom="32dp"
         android:textColor="#333333" />
 
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:indeterminate="true"
-        android:marginBottom="16dp"
-        style="@style/Widget.AppCompat.ProgressBar.Horizontal" />
-
     <TextView
         android:id="@+id/tvStatus"
         android:layout_width="match_parent"
@@ -32,6 +24,41 @@
         android:text="Initializing..."
         android:textSize="14sp"
         android:gravity="center"
+        android:marginBottom="24dp"
+        android:textColor="#666666" />
+
+    <Spinner
+        android:id="@+id/spinnerRegion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnDownload"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Download"
+        android:visibility="gone"
+        android:layout_marginBottom="16dp" />
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone"
+        android:layout_marginBottom="16dp"
+        style="@style/Widget.AppCompat.ProgressBar.Horizontal" />
+
+    <TextView
+        android:id="@+id/tvDownloadStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="0%"
+        android:textSize="12sp"
+        android:gravity="center"
+        android:visibility="gone"
         android:textColor="#666666" />
 
 </LinearLayout>

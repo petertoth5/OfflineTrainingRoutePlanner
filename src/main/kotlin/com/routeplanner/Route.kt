@@ -1,20 +1,12 @@
 package com.routeplanner
 
 import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.PolylineOptions
-import android.graphics.Color
 
 data class Route(
     val points: List<LatLng>,
     val distance: Double, // meters
     val hasLoops: Boolean = false
 ) {
-    fun toPolylineOptions(): PolylineOptions {
-        return PolylineOptions()
-            .addAll(points)
-            .color(Color.BLUE)
-            .width(5f)
-    }
 
     fun toGpx(): String {
         val gpxHeader = """

@@ -4,8 +4,8 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <com.google.android.gms.maps.SupportMapFragment
-        android:id="@+id/map"
+    <org.osmdroid.views.MapView
+        android:id="@+id/mapView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
@@ -98,13 +98,32 @@
             android:textColor="#666666"
             android:marginBottom="8dp" />
 
-        <Button
-            android:id="@+id/btnExport"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Export as GPX"
-            android:textSize="14sp"
-            android:enabled="false" />
+            android:orientation="horizontal"
+            android:marginBottom="8dp">
+
+            <Button
+                android:id="@+id/btnExport"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Export as GPX"
+                android:textSize="12sp"
+                android:enabled="false"
+                android:marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btnSettings"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Settings"
+                android:textSize="12sp"
+                android:marginStart="4dp" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
