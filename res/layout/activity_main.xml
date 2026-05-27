@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.gms.maps.SupportMapFragment
+        android:id="@+id/map"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#f5f5f5">
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tap map to select start point"
+            android:textSize="14sp"
+            android:textColor="#333333"
+            android:marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvStartPoint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Start: Not set"
+            android:textSize="12sp"
+            android:textColor="#666666"
+            android:marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvEndPoint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="End: Not set"
+            android:textSize="12sp"
+            android:textColor="#666666"
+            android:marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:marginBottom="8dp">
+
+            <Button
+                android:id="@+id/btnClearStart"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Clear Start"
+                android:textSize="12sp"
+                android:marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btnClearEnd"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Clear End"
+                android:textSize="12sp"
+                android:marginStart="4dp" />
+
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/etDistance"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Distance (km)"
+            android:inputType="numberDecimal"
+            android:textSize="14sp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnGenerate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Generate Route"
+            android:textSize="14sp"
+            android:marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvRouteInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Route info will appear here"
+            android:textSize="12sp"
+            android:textColor="#666666"
+            android:marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btnExport"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Export as GPX"
+            android:textSize="14sp"
+            android:enabled="false" />
+
+    </LinearLayout>
+
+</LinearLayout>
