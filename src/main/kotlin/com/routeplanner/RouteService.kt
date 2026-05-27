@@ -28,9 +28,17 @@ class RouteService(private val context: Context) {
                     return@launch
                 }
 
+                if (!osmFile.canRead()) {
+                    return@launch
+                }
+
                 graphHopper = GraphHopper().apply {
                     dataReaderFile = osmFile.absolutePath
-                    graphFolder = File(context.cacheDir, "gh").absolutePath
+                    val graphDir = File(context.cacheDir, "gh")
+                    if (!graphDir.exists() && !graphDir.mkdirs()) {
+                        return@apply
+                    }
+                    graphFolder = graphDir.absolutePath
                     profiles = listOf(
                         CHProfile("foot"),
                         CHProfile("bike")
@@ -38,6 +46,8 @@ class RouteService(private val context: Context) {
                     ch.enabled = true
                     build()
                 }
+            } catch (e: OutOfMemoryError) {
+                e.printStackTrace()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -48,24 +58,30 @@ class RouteService(private val context: Context) {
         startPoint: LatLng,
         endPoint: LatLng,
         distanceKm: Double,
-        callback: (Route?) -> Unit
+        minToleranceMeters: Int = 500,
+        maxToleranceMeters: Int = 500,
+        callback: (Route?, String?) -> Unit
     ) {
         scope.launch {
             try {
-                val gh = graphHopper ?: return@launch callback(null)
+                val gh = graphHopper ?: return@launch callback(null, "GraphHopper not initialized")
 
-                val route = calculateRoute(
-                    startPoint,
-                    endPoint,
-                    distanceKm * 1000 // convert to meters
-                )
+                val targetDistance = distanceKm * 1000 // convert to meters
+                val minDistance = targetDistance - minToleranceMeters
+                val maxDistance = targetDistance + maxToleranceMeters
+
+                val result = calculateRoute(startPoint, endPoint, targetDistance, minDistance, maxDistance)
 
                 withContext(Dispatchers.Main) {
-                    callback(route)
+                    if (result != null) {
+                        callback(result.first, result.second)
+                    } else {
+                        callback(null, "Could not generate route within tolerance range")
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                callback(null)
+                callback(null, "Error: ${e.message}")
             }
         }
     }
@@ -73,39 +89,77 @@ class RouteService(private val context: Context) {
     private fun calculateRoute(
         start: LatLng,
         end: LatLng,
-        targetDistanceMeters: Double
-    ): Route? {
-        val gh = graphHopper ?: return null
+        targetDistanceMeters: Double,
+        minDistanceMeters: Double,
+        maxDistanceMeters: Double
+    ): Pair<Route?, String?>? {
+        try {
+            val gh = graphHopper ?: return Pair(null, "Routing engine not ready. Retry in a moment.")
 
-        // Query shortest path first using foot profile (avoids highways)
-        val request = gh.route(
-            com.graphhopper.GHRequest(
-                GHPoint(start.latitude, start.longitude),
-                GHPoint(end.latitude, end.longitude)
-            ).apply {
-                locale = "en"
-                profile = "foot"
-                putHint("ch.disable", true) // disable CH for custom edge filtering
+            if (start.latitude < -90 || start.latitude > 90 || start.longitude < -180 || start.longitude > 180) {
+                return Pair(null, "Invalid start point coordinates")
             }
-        )
 
-        val response = gh.route(request)
-        if (response.hasErrors()) return null
+            if (end.latitude < -90 || end.latitude > 90 || end.longitude < -180 || end.longitude > 180) {
+                return Pair(null, "Invalid end point coordinates")
+            }
 
-        val shortestPath = response.best.points
-        val shortestDistance = response.best.distance
-
-        // If shortest path is close enough to target, return it
-        if (isWithinTolerance(shortestDistance, targetDistanceMeters)) {
-            return Route(
-                points = latLngFromGHPoints(shortestPath),
-                distance = shortestDistance.toDouble(),
-                hasLoops = detectLoops(shortestPath)
+            // Query shortest path first using foot profile (avoids highways)
+            val request = gh.route(
+                com.graphhopper.GHRequest(
+                    GHPoint(start.latitude, start.longitude),
+                    GHPoint(end.latitude, end.longitude)
+                ).apply {
+                    locale = "en"
+                    profile = "foot"
+                    putHint("ch.disable", true) // disable CH for custom edge filtering
+                }
             )
-        }
 
-        // Otherwise, extend path by adding detours
-        return extendRoute(start, end, targetDistanceMeters, shortestPath)
+            val response = gh.route(request)
+            if (response.hasErrors()) {
+                val error = response.errors.firstOrNull()?.message ?: "No route found"
+                return Pair(null, "Routing error: $error")
+            }
+
+            val shortestPath = response.best?.points
+            if (shortestPath == null || shortestPath.size == 0) {
+                return Pair(null, "No valid path found between points")
+            }
+
+            val shortestDistance = response.best.distance
+
+            if (shortestDistance <= 0) {
+                return Pair(null, "Points too close or invalid")
+            }
+
+            // If shortest path is within tolerance range, return it
+            if (shortestDistance >= minDistanceMeters && shortestDistance <= maxDistanceMeters) {
+                return Pair(Route(
+                    points = latLngFromGHPoints(shortestPath),
+                    distance = shortestDistance.toDouble(),
+                    hasLoops = detectLoops(shortestPath)
+                ), null)
+            }
+
+            // If too short, extend path by adding detours
+            if (shortestDistance < minDistanceMeters) {
+                val extendedRoute = extendRoute(start, end, targetDistanceMeters, shortestPath)
+                if (extendedRoute != null && extendedRoute.distance >= minDistanceMeters && extendedRoute.distance <= maxDistanceMeters) {
+                    return Pair(extendedRoute, null)
+                }
+            }
+
+            // Cannot fulfill requirements
+            val minKm = (minDistanceMeters / 1000).toInt()
+            val maxKm = (maxDistanceMeters / 1000).toInt()
+            val shortestKm = (shortestDistance / 1000).toInt()
+            return Pair(null, "Cannot generate $minKm-$maxKm km route. Shortest path is $shortestKm km.")
+        } catch (e: OutOfMemoryError) {
+            return Pair(null, "Out of memory: region data too large")
+        } catch (e: Exception) {
+            return Pair(null, "Routing error: ${e.message}")
+        }
     }
 
     private fun extendRoute(
@@ -153,10 +207,6 @@ class RouteService(private val context: Context) {
         return LatLng(midLat + offset, midLng + offset)
     }
 
-    private fun isWithinTolerance(distance: Double, target: Double): Boolean {
-        val tolerance = 500 // meters
-        return abs(distance - target) <= tolerance
-    }
 
     private fun detectLoops(points: com.graphhopper.util.PointList): Boolean {
         // Simple loop detection: check if any segment intersects with another
@@ -239,11 +289,38 @@ class RouteService(private val context: Context) {
 
     fun exportGpx(route: Route, filename: String): File? {
         return try {
-            val file = File(context.getExternalFilesDir(null), filename)
-            file.writeText(route.toGpx())
+            if (route.points.isEmpty()) {
+                return null
+            }
+
+            val externalDir = context.getExternalFilesDir(null)
+            if (externalDir == null) {
+                return null
+            }
+
+            if (!externalDir.exists() && !externalDir.mkdirs()) {
+                return null
+            }
+
+            val file = File(externalDir, filename)
+            val gpxContent = route.toGpx()
+
+            if (gpxContent.isEmpty()) {
+                return null
+            }
+
+            file.writeText(gpxContent)
+
+            if (!file.exists() || file.length() == 0L) {
+                return null
+            }
+
             file
+        } catch (e: SecurityException) {
+            null
+        } catch (e: IOException) {
+            null
         } catch (e: Exception) {
-            e.printStackTrace()
             null
         }
     }

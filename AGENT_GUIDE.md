@@ -45,6 +45,84 @@ RoutePlanner/
 
 ---
 
+## IMPORTANT: Agent Development Protocol
+
+**EVERY agent must update this guide after EACH development step.**
+
+When you modify code, add features, or fix bugs:
+1. Document what changed in relevant section below
+2. Add new sections if you created new classes/files
+3. Update data flows if routing/logic changed
+4. Update "Known Limitations" if you added TODOs
+5. Commit with message including "Updated AGENT_GUIDE.md"
+
+This keeps the codebase understandable for the next agent.
+
+---
+
+## Error Handling Architecture
+
+**Principle**: All user-facing errors → Toast + status text. All system errors → logging + graceful fallback.
+
+### Error Categories & Handling
+
+| Category | Where | How | User Sees |
+|----------|-------|-----|-----------|
+| **Input Validation** | MainActivity.generateRoute() | Check null, bounds, empty | Toast with fix hint |
+| **File I/O** | DataManager, RouteService | Try-catch + path checks | Toast with error |
+| **Network** | DataManager.downloadOsmData() | Timeout, validation, retry | Toast with details |
+| **Routing** | RouteService.calculateRoute() | OOM, bad coords, no path | Toast + status text |
+| **Map Operations** | MapManager, MapTouchOverlay | Coordinate validation | Toast if placement fails |
+| **State Errors** | All activities | Null checks, bounds | Silent fallback or toast |
+
+### Key Error Handling Patterns
+
+```kotlin
+// Pattern 1: Input Validation
+if (value == null) {
+    Toast.makeText(this, "Please select X", Toast.LENGTH_SHORT).show()
+    return
+}
+
+// Pattern 2: Try-Catch with User Message
+try {
+    riskyOperation()
+} catch (e: SpecificException) {
+    Toast.makeText(this, "Specific error: ${e.message}", Toast.LENGTH_SHORT).show()
+} catch (e: Exception) {
+    Toast.makeText(this, "General error: ${e.message}", Toast.LENGTH_SHORT).show()
+}
+
+// Pattern 3: Nullable Returns
+fun operation(): Result? {
+    return try {
+        // logic
+        result
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// Pattern 4: Pair<Success, Error> for Callbacks
+callback(successData, null)  // success
+callback(null, "Error message")  // failure
+```
+
+### Critical Error Scenarios (Must Handle)
+
+- **No start point selected** → User hint
+- **Invalid distance (<=0, >100km)** → Range message
+- **OSM file missing** → Suggest download
+- **GraphHopper not initialized** → Suggest wait + retry
+- **Download interrupted** → Clean up + allow retry
+- **Route impossible in tolerance** → Show shortest available
+- **Storage full** → Clear error message
+- **Permission denied** → Specific permission error
+- **Out of memory** → For large regions
+- **Bad coordinates** → Bounds check (lat/lon ranges)
+
+---
+
 ## Core Components & Responsibilities
 
 ### 1. SplashActivity
@@ -78,23 +156,27 @@ RoutePlanner/
 
 **Flow**:
 1. Initialize MapManager with osmdroid
-2. Setup map click handler (MapTouchOverlay)
+2. Setup map click handler (MapTouchOverlay) + tolerance sliders
 3. User taps map twice: start point, end point
 4. User enters distance (km)
-5. Click "Generate Route" → RouteService.generateRoute()
-6. Route displays as polyline
-7. Click "Export as GPX" → save to Downloads
-8. Settings button → region change, delete OSM data, export GPX files
+5. User adjusts tolerance sliders (min/max)
+6. Click "Generate Route" → RouteService.generateRoute() with tolerances
+7. Route displays as polyline or error toast if impossible
+8. Click "Export as GPX" → save to app dir + Downloads
+9. Settings button → region change, delete OSM data, export GPX files
 
 **Key Methods**:
 - `setupMapClickListener()` — attach MapTouchOverlay for taps
-- `generateRoute()` — call RouteService, display result
-- `displayRoute(route: Route)` — render polyline on map
-- `exportRoute()` — save GPX + copy to Downloads
-- `openSettings()` — region/data management dialog
-- `changeRegion()` — delete data + restart SplashActivity
-- `deleteOsmData()` — remove OSM file + download again
-- `exportGpxFiles()` — bulk copy all GPX to Downloads
+- `setupToleranceSlider()` — init min/max tolerance SeekBars, store values in `minTolerance`/`maxTolerance`
+- `updateMinToleranceDisplay()`/`updateMaxToleranceDisplay()` — update UI labels
+- `generateRoute()` — validate inputs (start, distance, bounds), call RouteService with tolerances
+- `displayRoute(route: Route)` — clear map, render polyline, show distance
+- `exportRoute()` — try-catch GPX export, copy to Downloads with error handling
+- `copyToDownloads()` — IOException/SecurityException handling
+- `openSettings()` — dialog: Change Region, Delete OSM Data, Export GPX Files
+- `changeRegion()` — confirmation + SplashActivity restart
+- `deleteOsmData()` — confirmation + error handling
+- `exportGpxFiles()` — validate dirs, filter .gpx files, bulk copy with per-file error tracking
 
 **Lifecycle**: 
 - `onCreate()` — init map, set listeners
@@ -124,19 +206,22 @@ RoutePlanner/
 - Non-blocking callbacks for UI updates
 
 **Route Generation Algorithm**:
-1. Query shortest path via GraphHopper.route()
-2. If distance ≈ target (within ±500m) → return
-3. If too short → extend by adding perpendicular detours at midpoints
-4. Distance calculation uses Haversine formula
-5. Loop detection via segment intersection (CCW algorithm)
+1. Validate: GraphHopper initialized, start/end coordinates valid
+2. Query shortest path via GraphHopper.route() using `foot` profile
+3. Check if distance ∈ [targetDistance - minTol, targetDistance + maxTol]
+4. If too short → extend by adding perpendicular detours at midpoints
+5. If still outside range → return error with available shortest distance
+6. Distance calculation uses Haversine formula (meters, great-circle)
+7. Loop detection via segment intersection (CCW algorithm)
+8. Return `Pair<Route?, errorMessage>` to allow errors in callback
 
 **Key Methods**:
-- `generateRoute(start, end, distance, callback)` — main entry, async
-- `calculateRoute(start, end, target)` — core routing logic
+- `generateRoute(start, end, distance, minTol, maxTol, callback)` — main entry, async, returns `Pair<Route?, error>`
+- `calculateRoute(start, end, target, minDist, maxDist)` — core routing logic, validates coordinates + bounds
 - `extendRoute()` — add detours for short routes
-- `detectLoops()` — check for path self-intersections
-- `haversineDistance()` — calculate lat/lng distance
-- `exportGpx()` — write Route to GPX XML file
+- `detectLoops()` — check for path self-intersections (CCW algorithm)
+- `haversineDistance()` — calculate lat/lng distance in meters
+- `exportGpx()` — try-catch GPX export, validate points + file, return File or null
 - `destroy()` — cleanup coroutines
 
 **Data Format - Route.toGpx()**:
@@ -185,10 +270,16 @@ RoutePlanner/
 - Runs on `Dispatchers.IO` (background thread)
 - Calls back on `Dispatchers.Main` for UI updates
 
-**Error Handling**:
-- Try/catch around download + file I/O
-- Returns null on error
-- Dialog shows error message
+**Error Handling** (comprehensive):
+- URL validation + format check
+- Connection timeout: 30 seconds (connectTimeout + readTimeout)
+- File length validation from server (must be > 0)
+- Available space check: requires 2x file size
+- Download interruption: cleanup + error callback
+- File integrity: verify ≥ 90% of expected size, else delete
+- SecurityException: permission error message
+- InterruptedIOException: user-friendly message
+- All errors → onError callback with user-facing text
 
 **Dependencies**: RegionManager (for region names + URLs)
 
@@ -235,19 +326,19 @@ To add a new region:
 
 **Purpose**: Wrapper around osmdroid MapView. Simplifies marker + polyline operations.
 
-**osmdroid Setup**:
+**osmdroid Setup** (with error handling):
 ```kotlin
 Configuration.getInstance().userAgentValue = "RoutePlanner/1.0"
 mapView.setTileSource(TileSourceFactory.MAPNIK)  // OpenStreetMap Mapnik tiles
 mapView.setMultiTouchControls(true)               // Zoom + pan gestures
 ```
 
-**Key Methods**:
-- `addMarker(latLng, title): Marker` — place marker, add to overlays
-- `removeMarker(marker)` — remove from overlays
-- `clear()` — remove all overlays (map, markers, polylines)
-- `addPolyline(points, color, width)` — render route line
-- `centerOnPoint(latLng, zoomLevel)` — pan + zoom
+**Key Methods** (all with try-catch + validation):
+- `addMarker(latLng, title): Marker?` — validate coords, place marker, return null on error
+- `removeMarker(marker?)` — null-safe removal
+- `clear()` — remove all overlays
+- `addPolyline(points, color, width)` — filter invalid points, handle empty lists
+- `centerOnPoint(latLng, zoomLevel)` — validate coords (lat ±90, lon ±180) and zoom (1-20)
 
 **Coordinate Conversion**:
 - osmdroid uses `GeoPoint(lat, lon)`
@@ -508,6 +599,10 @@ When updating this app, test these flows:
 | Download size large | Slow initial setup | Implement region sub-division (state-level instead of country) |
 | No offline tile cache | Maps blank without tile download | Pre-bundle tiles or use offline tile layer |
 | Loop detection basic | May miss complex loops | Improve algorithm or use GraphHopper path validation |
+| Tolerance UX basic | Users may not understand ranges | Add visual range preview on map |
+| Route display static | No intermediate points visible | Show waypoint count, allow editing |
+| No route history | Hard to repeat routes | Save/load favorite routes |
+| OSM data immutable | Can't update maps | Add manual refresh for region |
 
 ---
 
@@ -551,5 +646,31 @@ When updating this app, test these flows:
 
 ---
 
+## Recent Changes (Session 2)
+
+**Added Features**:
+- Dual tolerance sliders (min/max) in MainActivity
+- Error handling throughout (input validation, I/O, network, routing)
+- Better error messages for users (Toast + status text)
+- Coordinate validation (all lat/lon operations)
+- Storage space check before download
+- File integrity verification after download
+
+**Modified Classes**:
+- MainActivity: tolerance sliders, input validation, error messages
+- RouteService: tolerance parameters, coordinate validation, error returns
+- DataManager: URL validation, timeout config, storage check, cleanup
+- MapManager: all-try-catch, coordinate bounds checks
+- SplashActivity: progress bounds checking
+
+**Architecture Changes**:
+- Route generation now returns `Pair<Route?, String?>` for error handling
+- Callbacks include error messages instead of null
+- Tolerance logic: `minDistance = target - minTol`, `maxDistance = target + maxTol`
+
+---
+
 **Last Updated**: 2026-05-27
 **For Agents**: This guide enables full understanding + modification. Reference section numbers when asking questions.
+
+**MANDATORY FOR ALL AGENTS**: Update this file after each development step. Current session made 15+ error handling improvements — all documented above.

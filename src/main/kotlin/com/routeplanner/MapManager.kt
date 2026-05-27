@@ -13,50 +13,112 @@ import android.graphics.Color
 class MapManager(private val context: Context, private val mapView: MapView) {
 
     init {
-        Configuration.getInstance().userAgentValue = "RoutePlanner/1.0"
-        mapView.setTileSource(TileSourceFactory.MAPNIK)
-        mapView.setMultiTouchControls(true)
+        try {
+            Configuration.getInstance().userAgentValue = "RoutePlanner/1.0"
+            mapView.setTileSource(TileSourceFactory.MAPNIK)
+            mapView.setMultiTouchControls(true)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
-    fun addMarker(latLng: LatLng, title: String): Marker {
-        val marker = Marker(mapView)
-        marker.position = GeoPoint(latLng.latitude, latLng.longitude)
-        marker.title = title
-        mapView.overlays.add(marker)
-        mapView.invalidate()
-        return marker
+    fun addMarker(latLng: LatLng, title: String): Marker? {
+        return try {
+            if (latLng.latitude < -90 || latLng.latitude > 90 ||
+                latLng.longitude < -180 || latLng.longitude > 180) {
+                return null
+            }
+
+            val marker = Marker(mapView)
+            marker.position = GeoPoint(latLng.latitude, latLng.longitude)
+            marker.title = title
+            mapView.overlays.add(marker)
+            mapView.invalidate()
+            marker
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
-    fun removeMarker(marker: Marker) {
-        mapView.overlays.remove(marker)
-        mapView.invalidate()
+    fun removeMarker(marker: Marker?) {
+        try {
+            if (marker != null) {
+                mapView.overlays.remove(marker)
+                mapView.invalidate()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun clear() {
-        mapView.overlays.clear()
-        mapView.invalidate()
+        try {
+            mapView.overlays.clear()
+            mapView.invalidate()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun addPolyline(points: List<LatLng>, color: Int = Color.BLUE, width: Float = 5f) {
-        val polyline = Polyline()
-        polyline.setPoints(points.map { GeoPoint(it.latitude, it.longitude) })
-        polyline.setColor(color)
-        polyline.setWidth(width)
-        mapView.overlays.add(polyline)
-        mapView.invalidate()
+        try {
+            if (points.isEmpty()) {
+                return
+            }
+
+            val validPoints = points.filter {
+                it.latitude >= -90 && it.latitude <= 90 &&
+                it.longitude >= -180 && it.longitude <= 180
+            }
+
+            if (validPoints.isEmpty()) {
+                return
+            }
+
+            val polyline = Polyline()
+            polyline.setPoints(validPoints.map { GeoPoint(it.latitude, it.longitude) })
+            polyline.setColor(color)
+            polyline.setWidth(width)
+            mapView.overlays.add(polyline)
+            mapView.invalidate()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun setMapClickListener(callback: (LatLng) -> Unit) {
-        mapView.setOnClickListener { _ ->
-            // Get map center on click (osmdroid doesn't have direct click coordinates)
-            // Alternative: use GestureDetector overlay for precise tap coordinates
-            val center = mapView.mapCenter
-            callback(LatLng(center.latitude, center.longitude))
+        try {
+            mapView.setOnClickListener { _ ->
+                try {
+                    val center = mapView.mapCenter
+                    if (center != null) {
+                        callback(LatLng(center.latitude, center.longitude))
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
     fun centerOnPoint(latLng: LatLng, zoomLevel: Double = 13.0) {
-        mapView.controller.setCenter(GeoPoint(latLng.latitude, latLng.longitude))
-        mapView.controller.setZoom(zoomLevel)
+        try {
+            if (latLng.latitude < -90 || latLng.latitude > 90 ||
+                latLng.longitude < -180 || latLng.longitude > 180) {
+                return
+            }
+
+            if (zoomLevel < 1.0 || zoomLevel > 20.0) {
+                return
+            }
+
+            mapView.controller.setCenter(GeoPoint(latLng.latitude, latLng.longitude))
+            mapView.controller.setZoom(zoomLevel)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

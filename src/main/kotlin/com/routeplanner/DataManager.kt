@@ -5,6 +5,8 @@ import android.content.Context.MODE_PRIVATE
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.URL
 
 class DataManager(private val context: Context) {
@@ -48,36 +50,95 @@ class DataManager(private val context: Context) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val file = getOsmDataFile()
-                val url = URL(region.url)
-                val connection = url.openConnection()
+
+                // Validate URL
+                if (region.url.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        onError("Invalid region URL")
+                    }
+                    return@launch
+                }
+
+                val url = try {
+                    URL(region.url)
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        onError("Invalid URL format: ${e.message}")
+                    }
+                    return@launch
+                }
+
+                val connection = try {
+                    url.openConnection().apply {
+                        connectTimeout = 30000 // 30 seconds
+                        readTimeout = 30000
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        onError("Connection error: ${e.message}")
+                    }
+                    return@launch
+                }
+
                 val fileLength = connection.contentLength
+                if (fileLength <= 0) {
+                    withContext(Dispatchers.Main) {
+                        onError("Invalid file size from server")
+                    }
+                    return@launch
+                }
 
-                url.openStream().use { input ->
-                    FileOutputStream(file).use { output ->
-                        val data = ByteArray(8192)
-                        var downloaded = 0L
-                        var count: Int
+                // Check available space (rough estimate: need 2x file size)
+                val availableSpace = file.parentFile?.freeSpace ?: 0
+                if (availableSpace < fileLength * 2) {
+                    withContext(Dispatchers.Main) {
+                        onError("Not enough storage space (need ~${fileLength / (1024*1024*1024)} GB)")
+                    }
+                    return@launch
+                }
 
-                        while (input.read(data).also { count = it } != -1) {
-                            downloaded += count
-                            output.write(data, 0, count)
+                try {
+                    url.openStream().use { input ->
+                        FileOutputStream(file).use { output ->
+                            val data = ByteArray(8192)
+                            var downloaded = 0L
+                            var count: Int
 
-                            val progress = if (fileLength > 0) {
-                                ((downloaded * 100) / fileLength).toInt()
-                            } else {
-                                0
+                            while (input.read(data).also { count = it } != -1) {
+                                downloaded += count
+                                output.write(data, 0, count)
+
+                                val progress = ((downloaded * 100) / fileLength).toInt()
+                                onProgress(progress)
                             }
-                            onProgress(progress)
                         }
                     }
+                } catch (e: InterruptedIOException) {
+                    file.delete()
+                    withContext(Dispatchers.Main) {
+                        onError("Download interrupted")
+                    }
+                    return@launch
+                }
+
+                // Verify file
+                if (!file.exists() || file.length() < fileLength * 0.9) { // Allow 10% tolerance
+                    file.delete()
+                    withContext(Dispatchers.Main) {
+                        onError("Downloaded file incomplete or corrupted")
+                    }
+                    return@launch
                 }
 
                 setCurrentRegion(region)
                 withContext(Dispatchers.Main) {
                     onComplete()
                 }
+            } catch (e: SecurityException) {
+                withContext(Dispatchers.Main) {
+                    onError("Permission denied: cannot write file")
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
                 withContext(Dispatchers.Main) {
                     onError(e.message ?: "Download failed")
                 }
