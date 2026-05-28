@@ -43,7 +43,6 @@ dependencies {
     implementation("com.google.android.gms:play-services-maps:18.1.0")
     implementation("org.osmdroid:osmdroid-android:6.1.14")
     implementation("com.graphhopper:graphhopper-core:8.0")
-    // implementation("com.graphhopper:graphhopper-reader-osm:8.0") // Merged into core
     implementation("org.slf4j:slf4j-api:1.7.36")
     implementation("org.slf4j:slf4j-android:1.7.36")
 }

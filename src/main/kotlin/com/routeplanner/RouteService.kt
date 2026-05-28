@@ -26,33 +26,40 @@ class RouteService(private val context: Context) {
         return try {
             val osmFile = dataManager.getOsmDataFile()
             if (!osmFile.exists()) {
-                return "OSM file not found"
+                val msg = "OSM file not found at ${osmFile.absolutePath}"
+                android.util.Log.e("RouteService", msg)
+                return msg
             }
+
+            val fileSize = osmFile.length() / (1024 * 1024)
+            android.util.Log.d("RouteService", "OSM file size: ${fileSize}MB at ${osmFile.absolutePath}")
 
             if (!osmFile.canRead()) {
-                return "OSM file not readable"
+                return "OSM file not readable: ${osmFile.absolutePath}"
             }
 
+            android.util.Log.d("RouteService", "Creating GraphHopper instance (v8.0)")
             graphHopper = GraphHopper().apply {
                 setOSMFile(osmFile.absolutePath)
                 val graphDir = File(context.cacheDir, "gh")
                 graphDir.mkdirs()
                 setGraphHopperLocation(graphDir.absolutePath)
-                setProfiles(
-                    Profile("foot").setVehicle("foot").setWeighting("fastest"),
-                    Profile("bike").setVehicle("bike").setWeighting("fastest")
-                )
-                getCHPreparationHandler().setCHProfiles(
-                    CHProfile("foot"),
-                    CHProfile("bike")
-                )
+                setProfiles(listOf(
+                    Profile("car").setVehicle("car").setTurnCosts(false)
+                ))
+                android.util.Log.d("RouteService", "Calling importOrLoad - this may take a minute")
                 importOrLoad()
+                android.util.Log.d("RouteService", "GraphHopper initialized successfully")
             }
             ""
         } catch (e: OutOfMemoryError) {
-            "Out of memory: region too large"
+            val msg = "Out of memory: region too large (${e.message})"
+            android.util.Log.e("RouteService", msg, e)
+            msg
         } catch (e: Exception) {
-            "GraphHopper error: ${e.message}"
+            val msg = "Init failed: ${e.javaClass.simpleName}: ${e.message}"
+            android.util.Log.e("RouteService", msg, e)
+            msg
         }
     }
 
@@ -123,15 +130,15 @@ class RouteService(private val context: Context) {
                 return Pair(null, "Invalid end point coordinates")
             }
 
-            // Query shortest path first using foot profile (avoids highways)
+            // Query shortest path using car profile
             val response = gh.route(
                 com.graphhopper.GHRequest(
                     GHPoint(start.latitude, start.longitude),
                     GHPoint(end.latitude, end.longitude)
                 ).apply {
                     setLocale(Locale.ENGLISH)
-                    setProfile("foot")
-                    putHint("ch.disable", true) // disable CH for custom edge filtering
+                    setProfile("car")
+                    putHint("ch.disable", true)
                 }
             )
 
