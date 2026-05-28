@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.routeplanner-merged_res-5:/layout_activity_main.xml.flat",
+        "source": "com.routeplanner-OfflineTrainingRoutePlanner-6:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.routeplanner-merged_res-5:/layout_activity_splash.xml.flat",
+        "source": "com.routeplanner-OfflineTrainingRoutePlanner-6:/layout/activity_splash.xml"
+    }
+]

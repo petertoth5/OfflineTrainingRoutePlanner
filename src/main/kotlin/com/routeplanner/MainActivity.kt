@@ -50,6 +50,16 @@ class MainActivity : AppCompatActivity() {
         setupToleranceSlider()
         initializeLocation()
 
+        // Force GraphHopper initialization on background thread
+        Thread {
+            val error = routeService.initializeGraphHopperSync()
+            if (error.isNotEmpty()) {
+                runOnUiThread {
+                    Toast.makeText(this, "Map initialization: $error", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+
         binding.btnGenerate.setOnClickListener { generateRoute() }
         binding.btnClearStart.setOnClickListener { clearStart() }
         binding.btnClearEnd.setOnClickListener { clearEnd() }
@@ -408,6 +418,7 @@ class MainActivity : AppCompatActivity() {
                 if (lastLocation != null) {
                     userLocation = LatLng(lastLocation.latitude, lastLocation.longitude)
                     mapManager.centerOnPoint(userLocation!!, 15.0)
+                    setStartPointToCurrentLocation()
                 } else {
                     mapManager.centerOnPoint(LatLng(47.5, 19.0), 6.0)
                 }
@@ -416,6 +427,16 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             mapManager.centerOnPoint(LatLng(47.5, 19.0), 6.0)
+        }
+    }
+
+    private fun setStartPointToCurrentLocation() {
+        if (userLocation != null) {
+            startMarker?.let { mapManager.removeMarker(it) }
+            startMarker = mapManager.addMarker(userLocation!!, "Start Point (Current Location)")
+            binding.tvStartPoint.text = "Start: ${String.format("%.4f", userLocation!!.latitude)}, ${String.format("%.4f", userLocation!!.longitude)}"
+            isSelectingStart = false
+            binding.tvStatus.text = "Start point set to current location. Tap map to select end point (or skip)"
         }
     }
 

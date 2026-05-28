@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(rtk git *)",
-      "Bash(rtk git commit -m 'Add region selector, GPX export, OSM data management *)"
+      "Bash(rtk git commit -m 'Add region selector, GPX export, OSM data management *)",
+      "Bash(./gradlew clean *)",
+      "Bash(rtk ps *)",
+      "Bash(rtk ls *)",
+      "Bash(adb devices *)",
+      "Bash(./gradlew installDebug *)",
+      "Bash(rtk read *)",
+      "Bash(rtk grep *)"
     ]
   }
 }

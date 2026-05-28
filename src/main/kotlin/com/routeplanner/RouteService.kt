@@ -17,47 +17,48 @@ class RouteService(private val context: Context) {
     private var graphHopper: GraphHopper? = null
     private val scope = CoroutineScope(Dispatchers.Default + Job())
     private val dataManager = DataManager(context)
-    @Volatile private var isGraphHopperReady = false
 
     init {
         initializeGraphHopper()
     }
 
-    private fun initializeGraphHopper() {
-        scope.launch {
-            try {
-                val osmFile = dataManager.getOsmDataFile()
-                if (!osmFile.exists()) {
-                    return@launch
-                }
-
-                if (!osmFile.canRead()) {
-                    return@launch
-                }
-
-                graphHopper = GraphHopper().apply {
-                    setOSMFile(osmFile.absolutePath)
-                    val graphDir = File(context.cacheDir, "gh")
-                    if (!graphDir.exists() && !graphDir.mkdirs()) {
-                        // Continue anyway
-                    }
-                    setGraphHopperLocation(graphDir.absolutePath)
-                    setProfiles(
-                        Profile("foot").setVehicle("foot").setWeighting("fastest"),
-                        Profile("bike").setVehicle("bike").setWeighting("fastest")
-                    )
-                    getCHPreparationHandler().setCHProfiles(
-                        CHProfile("foot"),
-                        CHProfile("bike")
-                    )
-                    importOrLoad()
-                }
-                isGraphHopperReady = true
-            } catch (e: OutOfMemoryError) {
-                e.printStackTrace()
-            } catch (e: Exception) {
-                e.printStackTrace()
+    fun initializeGraphHopperSync(): String {
+        return try {
+            val osmFile = dataManager.getOsmDataFile()
+            if (!osmFile.exists()) {
+                return "OSM file not found"
             }
+
+            if (!osmFile.canRead()) {
+                return "OSM file not readable"
+            }
+
+            graphHopper = GraphHopper().apply {
+                setOSMFile(osmFile.absolutePath)
+                val graphDir = File(context.cacheDir, "gh")
+                graphDir.mkdirs()
+                setGraphHopperLocation(graphDir.absolutePath)
+                setProfiles(
+                    Profile("foot").setVehicle("foot").setWeighting("fastest"),
+                    Profile("bike").setVehicle("bike").setWeighting("fastest")
+                )
+                getCHPreparationHandler().setCHProfiles(
+                    CHProfile("foot"),
+                    CHProfile("bike")
+                )
+                importOrLoad()
+            }
+            ""
+        } catch (e: OutOfMemoryError) {
+            "Out of memory: region too large"
+        } catch (e: Exception) {
+            "GraphHopper error: ${e.message}"
+        }
+    }
+
+    private fun initializeGraphHopper() {
+        scope.launch(Dispatchers.Default) {
+            initializeGraphHopperSync()
         }
     }
 
@@ -71,14 +72,18 @@ class RouteService(private val context: Context) {
     ) {
         scope.launch {
             try {
-                if (!isGraphHopperReady) {
-                    Thread.sleep(500)
-                    if (!isGraphHopperReady) {
-                        return@launch callback(null, "Map data still loading. Please retry in a moment.")
+                var gh = graphHopper
+                if (gh == null) {
+                    for (i in 0..59) { // wait up to 30 seconds (500ms * 60)
+                        Thread.sleep(500)
+                        gh = graphHopper
+                        if (gh != null) break
                     }
                 }
 
-                val gh = graphHopper ?: return@launch callback(null, "Map data not available. Try changing region.")
+                if (gh == null) {
+                    return@launch callback(null, "Map data not available. Try changing region or restarting app.")
+                }
 
                 val targetDistance = distanceMeters
                 val minDistance = targetDistance - minToleranceMeters

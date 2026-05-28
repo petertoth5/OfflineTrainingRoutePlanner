@@ -1,0 +1,182 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.routeplanner"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="24"
+8-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml
+9        android:targetSdkVersion="34" />
+9-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:5:5-67
+11-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:5:22-64
+12    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+12-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:6:5-79
+12-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:6:22-76
+13    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+13-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:7:5-79
+13-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:7:22-76
+14    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+14-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:8:5-81
+14-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:8:22-78
+15    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+15-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:9:5-80
+15-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:9:22-77
+16    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+16-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:10:5-81
+16-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:10:22-78
+17
+18    <uses-feature
+18-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:26:5-28:35
+19        android:glEsVersion="0x00020000"
+19-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:27:9-41
+20        android:required="true" />
+20-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:28:9-32
+21
+22    <queries>
+22-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:30:5-34:15
+23
+24        <!-- Needs to be explicitly declared on Android R+ -->
+25        <package android:name="com.google.android.apps.maps" />
+25-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:33:9-64
+25-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:33:18-61
+26    </queries>
+27
+28    <permission
+28-->[androidx.core:core:1.9.0] C:\Users\peter\.gradle\caches\transforms-3\5d3d7cf0b48107ea9076c6dec3690201\transformed\core-1.9.0\AndroidManifest.xml:22:5-24:47
+29        android:name="com.routeplanner.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+29-->[androidx.core:core:1.9.0] C:\Users\peter\.gradle\caches\transforms-3\5d3d7cf0b48107ea9076c6dec3690201\transformed\core-1.9.0\AndroidManifest.xml:23:9-81
+30        android:protectionLevel="signature" />
+30-->[androidx.core:core:1.9.0] C:\Users\peter\.gradle\caches\transforms-3\5d3d7cf0b48107ea9076c6dec3690201\transformed\core-1.9.0\AndroidManifest.xml:24:9-44
+31
+32    <uses-permission android:name="com.routeplanner.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+32-->[androidx.core:core:1.9.0] C:\Users\peter\.gradle\caches\transforms-3\5d3d7cf0b48107ea9076c6dec3690201\transformed\core-1.9.0\AndroidManifest.xml:26:5-97
+32-->[androidx.core:core:1.9.0] C:\Users\peter\.gradle\caches\transforms-3\5d3d7cf0b48107ea9076c6dec3690201\transformed\core-1.9.0\AndroidManifest.xml:26:22-94
+33
+34    <supports-screens
+34-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:9:5-12:40
+35        android:anyDensity="true"
+35-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:10:9-34
+36        android:largeScreens="true"
+36-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:11:9-36
+37        android:normalScreens="true" />
+37-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:12:9-37
+38
+39    <uses-feature
+39-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:14:5-16:36
+40        android:name="android.hardware.location.network"
+40-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:15:9-57
+41        android:required="false" />
+41-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:16:9-33
+42    <uses-feature
+42-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:17:5-19:36
+43        android:name="android.hardware.location.gps"
+43-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:18:9-53
+44        android:required="false" />
+44-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:19:9-33
+45    <uses-feature
+45-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:20:5-22:36
+46        android:name="android.hardware.telephony"
+46-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:21:9-50
+47        android:required="false" />
+47-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:22:9-33
+48    <uses-feature
+48-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:23:5-25:36
+49        android:name="android.hardware.wifi"
+49-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:24:9-45
+50        android:required="false" />
+50-->[org.osmdroid:osmdroid-android:6.1.14] C:\Users\peter\.gradle\caches\transforms-3\49537cbde040e59f003c19ea25c2bdb6\transformed\jetified-osmdroid-android-6.1.14\AndroidManifest.xml:25:9-33
+51
+52    <application
+52-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:12:5-33:19
+53        android:allowBackup="true"
+53-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:13:9-35
+54        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+54-->[androidx.core:core:1.9.0] C:\Users\peter\.gradle\caches\transforms-3\5d3d7cf0b48107ea9076c6dec3690201\transformed\core-1.9.0\AndroidManifest.xml:28:18-86
+55        android:debuggable="true"
+56        android:extractNativeLibs="false"
+57        android:icon="@android:mipmap/sym_def_app_icon"
+57-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:14:9-56
+58        android:label="@string/app_name"
+58-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:15:9-41
+59        android:theme="@style/Theme.RoutePlanner" >
+59-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:16:9-50
+60        <activity
+60-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:18:9-26:20
+61            android:name="com.routeplanner.SplashActivity"
+61-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:19:13-43
+62            android:exported="true"
+62-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:20:13-36
+63            android:screenOrientation="portrait" >
+63-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:21:13-49
+64            <intent-filter>
+64-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:22:13-25:29
+65                <action android:name="android.intent.action.MAIN" />
+65-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:23:17-69
+65-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:23:25-66
+66
+67                <category android:name="android.intent.category.LAUNCHER" />
+67-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:24:17-77
+67-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:24:27-74
+68            </intent-filter>
+69        </activity>
+70        <activity
+70-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:28:9-31:52
+71            android:name="com.routeplanner.MainActivity"
+71-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:29:13-41
+72            android:exported="false"
+72-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:30:13-37
+73            android:screenOrientation="portrait" />
+73-->C:\Projects\GitHub\OTRP\OfflineTrainingRoutePlanner\AndroidManifest.xml:31:13-49
+74
+75        <!-- Needs to be explicitly declared on P+ -->
+76        <uses-library
+76-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:39:9-41:40
+77            android:name="org.apache.http.legacy"
+77-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:40:13-50
+78            android:required="false" />
+78-->[com.google.android.gms:play-services-maps:18.1.0] C:\Users\peter\.gradle\caches\transforms-3\c4012cb8226b4473700fdd0d25e117ce\transformed\jetified-play-services-maps-18.1.0\AndroidManifest.xml:41:13-37
+79
+80        <activity
+80-->[com.google.android.gms:play-services-base:18.0.1] C:\Users\peter\.gradle\caches\transforms-3\56044aecaefb63d8a6debb775272d645\transformed\jetified-play-services-base-18.0.1\AndroidManifest.xml:20:9-22:45
+81            android:name="com.google.android.gms.common.api.GoogleApiActivity"
+81-->[com.google.android.gms:play-services-base:18.0.1] C:\Users\peter\.gradle\caches\transforms-3\56044aecaefb63d8a6debb775272d645\transformed\jetified-play-services-base-18.0.1\AndroidManifest.xml:20:19-85
+82            android:exported="false"
+82-->[com.google.android.gms:play-services-base:18.0.1] C:\Users\peter\.gradle\caches\transforms-3\56044aecaefb63d8a6debb775272d645\transformed\jetified-play-services-base-18.0.1\AndroidManifest.xml:22:19-43
+83            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+83-->[com.google.android.gms:play-services-base:18.0.1] C:\Users\peter\.gradle\caches\transforms-3\56044aecaefb63d8a6debb775272d645\transformed\jetified-play-services-base-18.0.1\AndroidManifest.xml:21:19-78
+84
+85        <meta-data
+85-->[com.google.android.gms:play-services-basement:18.0.0] C:\Users\peter\.gradle\caches\transforms-3\0f270696b2b7f6cf048c135f9d74167d\transformed\jetified-play-services-basement-18.0.0\AndroidManifest.xml:21:9-23:69
+86            android:name="com.google.android.gms.version"
+86-->[com.google.android.gms:play-services-basement:18.0.0] C:\Users\peter\.gradle\caches\transforms-3\0f270696b2b7f6cf048c135f9d74167d\transformed\jetified-play-services-basement-18.0.0\AndroidManifest.xml:22:13-58
+87            android:value="@integer/google_play_services_version" />
+87-->[com.google.android.gms:play-services-basement:18.0.0] C:\Users\peter\.gradle\caches\transforms-3\0f270696b2b7f6cf048c135f9d74167d\transformed\jetified-play-services-basement-18.0.0\AndroidManifest.xml:23:13-66
+88
+89        <provider
+89-->[androidx.emoji2:emoji2:1.2.0] C:\Users\peter\.gradle\caches\transforms-3\660985226d1701ca69b8fd546eb4f680\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:24:9-32:20
+90            android:name="androidx.startup.InitializationProvider"
+90-->[androidx.emoji2:emoji2:1.2.0] C:\Users\peter\.gradle\caches\transforms-3\660985226d1701ca69b8fd546eb4f680\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:25:13-67
+91            android:authorities="com.routeplanner.androidx-startup"
+91-->[androidx.emoji2:emoji2:1.2.0] C:\Users\peter\.gradle\caches\transforms-3\660985226d1701ca69b8fd546eb4f680\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:26:13-68
+92            android:exported="false" >
+92-->[androidx.emoji2:emoji2:1.2.0] C:\Users\peter\.gradle\caches\transforms-3\660985226d1701ca69b8fd546eb4f680\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:27:13-37
+93            <meta-data
+93-->[androidx.emoji2:emoji2:1.2.0] C:\Users\peter\.gradle\caches\transforms-3\660985226d1701ca69b8fd546eb4f680\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:29:13-31:52
+94                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+94-->[androidx.emoji2:emoji2:1.2.0] C:\Users\peter\.gradle\caches\transforms-3\660985226d1701ca69b8fd546eb4f680\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:30:17-75
+95                android:value="androidx.startup" />
+95-->[androidx.emoji2:emoji2:1.2.0] C:\Users\peter\.gradle\caches\transforms-3\660985226d1701ca69b8fd546eb4f680\transformed\jetified-emoji2-1.2.0\AndroidManifest.xml:31:17-49
+96            <meta-data
+96-->[androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\peter\.gradle\caches\transforms-3\cc7dc810838761e876b21fd7f3574c23\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:31:13-33:52
+97                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+97-->[androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\peter\.gradle\caches\transforms-3\cc7dc810838761e876b21fd7f3574c23\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:32:17-78
+98                android:value="androidx.startup" />
+98-->[androidx.lifecycle:lifecycle-process:2.4.1] C:\Users\peter\.gradle\caches\transforms-3\cc7dc810838761e876b21fd7f3574c23\transformed\jetified-lifecycle-process-2.4.1\AndroidManifest.xml:33:17-49
+99        </provider>
+100    </application>
+101
+102</manifest>
