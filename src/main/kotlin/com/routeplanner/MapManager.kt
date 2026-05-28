@@ -61,6 +61,15 @@ class MapManager(private val context: Context, private val mapView: MapView) {
         }
     }
 
+    fun clearRoute() {
+        try {
+            mapView.overlays.removeAll { it is Polyline }
+            mapView.invalidate()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun addPolyline(points: List<LatLng>, color: Int = Color.BLUE, width: Float = 5f) {
         try {
             if (points.isEmpty()) {

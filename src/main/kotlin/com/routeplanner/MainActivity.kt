@@ -88,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnGenerate.setOnClickListener { generateRoute() }
+        binding.btnNewRoute.setOnClickListener { newRoute() }
         binding.btnClearStart.setOnClickListener { clearStart() }
         binding.btnClearEnd.setOnClickListener { clearEnd() }
         binding.btnExport.setOnClickListener { exportRoute() }
@@ -242,9 +243,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun displayRoute(route: Route) {
         currentRoute = route
-        mapManager.clear()
+        mapManager.clearRoute()
         mapManager.addPolyline(route.points)
         binding.tvRouteInfo.text = "Route: ${route.distance.toInt()}m, ${route.points.size} points"
+    }
+
+    private fun newRoute() {
+        startMarker?.let { mapManager.removeMarker(it) }
+        endMarker?.let { mapManager.removeMarker(it) }
+        startMarker = null
+        endMarker = null
+        currentRoute = null
+        mapManager.clearRoute()
+        isSelectingStart = true
+        binding.tvStartPoint.text = "Start: Not set"
+        binding.tvEndPoint.text = "End: Not set"
+        binding.tvRouteInfo.text = "Route info will appear here"
+        binding.tvStatus.text = "Tap map to select start point"
+        binding.btnExport.isEnabled = false
     }
 
     private fun exportRoute() {

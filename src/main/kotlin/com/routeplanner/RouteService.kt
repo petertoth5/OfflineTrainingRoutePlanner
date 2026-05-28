@@ -192,16 +192,41 @@ class RouteService(private val context: Context) {
     private fun routeViaGH(gh: GraphHopper, points: List<LatLng>, profile: String): com.graphhopper.GHResponse? {
         return try {
             val ghPoints = points.map { GHPoint(it.latitude, it.longitude) }
+            // Departure heading at each point toward next point — discourages backtracking
+            val headings = points.mapIndexed { i, p ->
+                if (i < points.size - 1) bearingDeg(p, points[i + 1]) else Double.NaN
+            }
             gh.route(
                 com.graphhopper.GHRequest(ghPoints).apply {
                     setLocale(Locale.ENGLISH)
                     setProfile(profile)
                     putHint("ch.disable", true)
+                    putHint("heading_penalty", 300.0)
+                    setHeadings(headings)
                 }
             )
         } catch (e: Exception) {
-            null
+            // Fall back without headings if API differs
+            try {
+                val ghPoints = points.map { GHPoint(it.latitude, it.longitude) }
+                gh.route(
+                    com.graphhopper.GHRequest(ghPoints).apply {
+                        setLocale(Locale.ENGLISH)
+                        setProfile(profile)
+                        putHint("ch.disable", true)
+                    }
+                )
+            } catch (e2: Exception) { null }
         }
+    }
+
+    private fun bearingDeg(from: LatLng, to: LatLng): Double {
+        val dLon = Math.toRadians(to.longitude - from.longitude)
+        val lat1 = Math.toRadians(from.latitude)
+        val lat2 = Math.toRadians(to.latitude)
+        val x = sin(dLon) * cos(lat2)
+        val y = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        return (Math.toDegrees(atan2(x, y)) + 360) % 360
     }
 
     // Circular route: 3 waypoints at 120° intervals around the center.
