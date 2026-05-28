@@ -37,16 +37,18 @@ class RouteService(private val context: Context) {
             graphDir.mkdirs()
             File(graphDir, "lock").delete()
 
-            // Wipe graph dir when profile config changes — old graph is incompatible with new encoders
             val profileFingerprint = "foot_bike_gh6_v1"
             val prefs = context.getSharedPreferences("route_planner_prefs", android.content.Context.MODE_PRIVATE)
             if (prefs.getString("gh_profiles", null) != profileFingerprint) {
                 android.util.Log.d("RouteService", "Profile config changed, clearing graph cache")
                 graphDir.deleteRecursively()
                 graphDir.mkdirs()
+                // Save fingerprint BEFORE import — if process is killed mid-import, next launch
+                // skips the wipe and lets GraphHopper attempt to resume/reimport on its own
+                prefs.edit().putString("gh_profiles", profileFingerprint).apply()
             }
 
-            android.util.Log.d("RouteService", "Creating GraphHopper instance (v8.0)")
+            android.util.Log.d("RouteService", "Creating GraphHopper instance (GH 6.0)")
             graphHopper = GraphHopper().apply {
                 setOSMFile(osmFile.absolutePath)
                 setGraphHopperLocation(graphDir.absolutePath)
@@ -54,11 +56,10 @@ class RouteService(private val context: Context) {
                     Profile("foot").setVehicle("foot").setWeighting("fastest").setTurnCosts(false),
                     Profile("bike").setVehicle("bike").setWeighting("fastest").setTurnCosts(false)
                 ))
-                android.util.Log.d("RouteService", "Calling importOrLoad - this may take a minute")
+                android.util.Log.d("RouteService", "Calling importOrLoad")
                 importOrLoad()
                 android.util.Log.d("RouteService", "GraphHopper initialized successfully")
             }
-            prefs.edit().putString("gh_profiles", profileFingerprint).apply()
             ""
         } catch (e: OutOfMemoryError) {
             val msg = "Out of memory: region too large (${e.message})"

@@ -52,14 +52,25 @@ class MainActivity : AppCompatActivity() {
         initializeLocation()
 
         binding.btnGenerate.isEnabled = false
-        binding.tvStatus.text = "Preparing routing engine, please wait..."
+        val initStartTime = System.currentTimeMillis()
+
+        val timerRunnable = object : Runnable {
+            override fun run() {
+                val elapsed = (System.currentTimeMillis() - initStartTime) / 1000
+                binding.tvStatus.text = "Preparing routing engine... ${elapsed}s (first run may take 5-15 min)"
+                binding.root.postDelayed(this, 1000)
+            }
+        }
+        binding.root.post(timerRunnable)
 
         Thread {
             val error = routeService.initializeGraphHopperSync()
             runOnUiThread {
+                binding.root.removeCallbacks(timerRunnable)
                 if (error.isEmpty()) {
+                    val elapsed = (System.currentTimeMillis() - initStartTime) / 1000
                     binding.btnGenerate.isEnabled = true
-                    binding.tvStatus.text = "Tap map to select start point"
+                    binding.tvStatus.text = "Ready (engine loaded in ${elapsed}s)"
                 } else {
                     binding.tvStatus.text = "Routing engine failed: $error"
                     Toast.makeText(this, "Map initialization failed: $error", Toast.LENGTH_LONG).show()
