@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     private var currentRoute: Route? = null
     private var minTolerance: Int = 500 // default -500m (can be shorter)
     private var maxTolerance: Int = 500 // default +500m (can be longer)
+    private var selectedProfile: String = "foot"
     private var locationManager: LocationManager? = null
     private var userLocation: LatLng? = null
 
@@ -50,15 +51,30 @@ class MainActivity : AppCompatActivity() {
         setupToleranceSlider()
         initializeLocation()
 
-        // Force GraphHopper initialization on background thread
+        binding.btnGenerate.isEnabled = false
+        binding.tvStatus.text = "Preparing routing engine, please wait..."
+
         Thread {
             val error = routeService.initializeGraphHopperSync()
-            if (error.isNotEmpty()) {
-                runOnUiThread {
-                    Toast.makeText(this, "Map initialization: $error", Toast.LENGTH_LONG).show()
+            runOnUiThread {
+                if (error.isEmpty()) {
+                    binding.btnGenerate.isEnabled = true
+                    binding.tvStatus.text = "Tap map to select start point"
+                } else {
+                    binding.tvStatus.text = "Routing engine failed: $error"
+                    Toast.makeText(this, "Map initialization failed: $error", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
+
+        binding.etDistance.setText("10000")
+
+        binding.toggleGroupProfile.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                selectedProfile = if (checkedId == R.id.btnProfileRun) "foot" else "bike"
+                binding.etDistance.setText(if (checkedId == R.id.btnProfileRun) "10000" else "20000")
+            }
+        }
 
         binding.btnGenerate.setOnClickListener { generateRoute() }
         binding.btnClearStart.setOnClickListener { clearStart() }
@@ -192,7 +208,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvStatus.text = "Generating route..."
             binding.btnGenerate.isEnabled = false
 
-            routeService.generateRoute(startPoint, endPoint, distance, minTolerance, maxTolerance) { route, error ->
+            routeService.generateRoute(startPoint, endPoint, distance, selectedProfile, minTolerance, maxTolerance) { route, error ->
                 runOnUiThread {
                     binding.btnGenerate.isEnabled = true
                     if (route != null) {

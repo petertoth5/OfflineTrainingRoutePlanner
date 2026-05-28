@@ -3,7 +3,6 @@ package com.routeplanner
 import android.content.Context
 import com.google.android.gms.maps.model.LatLng
 import com.graphhopper.GraphHopper
-import com.graphhopper.config.CHProfile
 import com.graphhopper.config.Profile
 import com.graphhopper.util.shapes.GHPoint
 import kotlinx.coroutines.*
@@ -14,13 +13,9 @@ import kotlin.math.*
 
 class RouteService(private val context: Context) {
 
-    private var graphHopper: GraphHopper? = null
+    @Volatile private var graphHopper: GraphHopper? = null
     private val scope = CoroutineScope(Dispatchers.Default + Job())
     private val dataManager = DataManager(context)
-
-    init {
-        initializeGraphHopper()
-    }
 
     fun initializeGraphHopperSync(): String {
         return try {
@@ -38,19 +33,32 @@ class RouteService(private val context: Context) {
                 return "OSM file not readable: ${osmFile.absolutePath}"
             }
 
+            val graphDir = File(context.cacheDir, "gh")
+            graphDir.mkdirs()
+            File(graphDir, "lock").delete()
+
+            // Wipe graph dir when profile config changes — old graph is incompatible with new encoders
+            val profileFingerprint = "foot_bike_gh6_v1"
+            val prefs = context.getSharedPreferences("route_planner_prefs", android.content.Context.MODE_PRIVATE)
+            if (prefs.getString("gh_profiles", null) != profileFingerprint) {
+                android.util.Log.d("RouteService", "Profile config changed, clearing graph cache")
+                graphDir.deleteRecursively()
+                graphDir.mkdirs()
+            }
+
             android.util.Log.d("RouteService", "Creating GraphHopper instance (v8.0)")
             graphHopper = GraphHopper().apply {
                 setOSMFile(osmFile.absolutePath)
-                val graphDir = File(context.cacheDir, "gh")
-                graphDir.mkdirs()
                 setGraphHopperLocation(graphDir.absolutePath)
                 setProfiles(listOf(
-                    Profile("car").setVehicle("car").setTurnCosts(false)
+                    Profile("foot").setVehicle("foot").setWeighting("fastest").setTurnCosts(false),
+                    Profile("bike").setVehicle("bike").setWeighting("fastest").setTurnCosts(false)
                 ))
                 android.util.Log.d("RouteService", "Calling importOrLoad - this may take a minute")
                 importOrLoad()
                 android.util.Log.d("RouteService", "GraphHopper initialized successfully")
             }
+            prefs.edit().putString("gh_profiles", profileFingerprint).apply()
             ""
         } catch (e: OutOfMemoryError) {
             val msg = "Out of memory: region too large (${e.message})"
@@ -63,40 +71,27 @@ class RouteService(private val context: Context) {
         }
     }
 
-    private fun initializeGraphHopper() {
-        scope.launch(Dispatchers.Default) {
-            initializeGraphHopperSync()
-        }
-    }
-
     fun generateRoute(
         startPoint: LatLng,
         endPoint: LatLng,
         distanceMeters: Double,
+        profile: String = "foot",
         minToleranceMeters: Int = 500,
         maxToleranceMeters: Int = 500,
         callback: (Route?, String?) -> Unit
     ) {
         scope.launch {
             try {
-                var gh = graphHopper
+                val gh = graphHopper
                 if (gh == null) {
-                    for (i in 0..59) { // wait up to 30 seconds (500ms * 60)
-                        Thread.sleep(500)
-                        gh = graphHopper
-                        if (gh != null) break
-                    }
-                }
-
-                if (gh == null) {
-                    return@launch callback(null, "Map data not available. Try changing region or restarting app.")
+                    return@launch callback(null, "Routing engine not ready.")
                 }
 
                 val targetDistance = distanceMeters
                 val minDistance = targetDistance - minToleranceMeters
                 val maxDistance = targetDistance + maxToleranceMeters
 
-                val result = calculateRoute(startPoint, endPoint, targetDistance, minDistance, maxDistance)
+                val result = calculateRoute(startPoint, endPoint, targetDistance, minDistance, maxDistance, profile)
 
                 withContext(Dispatchers.Main) {
                     if (result != null) {
@@ -117,7 +112,8 @@ class RouteService(private val context: Context) {
         end: LatLng,
         targetDistanceMeters: Double,
         minDistanceMeters: Double,
-        maxDistanceMeters: Double
+        maxDistanceMeters: Double,
+        profile: String = "foot"
     ): Pair<Route?, String?>? {
         try {
             val gh = graphHopper ?: return Pair(null, "Routing engine not ready. Retry in a moment.")
@@ -137,7 +133,7 @@ class RouteService(private val context: Context) {
                     GHPoint(end.latitude, end.longitude)
                 ).apply {
                     setLocale(Locale.ENGLISH)
-                    setProfile("car")
+                    setProfile(profile)
                     putHint("ch.disable", true)
                 }
             )
@@ -257,7 +253,7 @@ class RouteService(private val context: Context) {
         lat4: Double, lon4: Double
     ): Boolean {
         val ccw = { p1lat: Double, p1lon: Double, p2lat: Double, p2lon: Double, p3lat: Double, p3lon: Double ->
-            (p3lon - p1lon) * (p1lat - p2lat) > (p1lon - p2lon) * (p3lat - p2lat)
+            (p3lon - p1lon) * (p2lat - p1lat) > (p2lon - p1lon) * (p3lat - p1lat)
         }
         return ccw(lat1, lon1, lat3, lon3, lat4, lon4) != ccw(lat2, lon2, lat3, lon3, lat4, lon4) &&
                ccw(lat1, lon1, lat2, lon2, lat3, lon3) != ccw(lat1, lon1, lat2, lon2, lat4, lon4)

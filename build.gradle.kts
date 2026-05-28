@@ -26,6 +26,15 @@ android {
         }
     }
 
+    packagingOptions {
+        resources {
+            excludes += "META-INF/LICENSE.md"
+            excludes += "META-INF/NOTICE.md"
+            excludes += "META-INF/LICENSE.txt"
+            excludes += "META-INF/NOTICE.txt"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -42,7 +51,7 @@ dependencies {
     implementation("com.google.android.material:material:1.9.0")
     implementation("com.google.android.gms:play-services-maps:18.1.0")
     implementation("org.osmdroid:osmdroid-android:6.1.14")
-    implementation("com.graphhopper:graphhopper-core:8.0")
+    implementation("com.graphhopper:graphhopper-core:6.0")
     implementation("org.slf4j:slf4j-api:1.7.36")
     implementation("org.slf4j:slf4j-android:1.7.36")
 }

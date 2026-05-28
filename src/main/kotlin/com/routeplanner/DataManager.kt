@@ -109,7 +109,7 @@ class DataManager(private val context: Context) {
                                 output.write(data, 0, count)
 
                                 val progress = ((downloaded * 100) / fileLength).toInt()
-                                onProgress(progress)
+                                withContext(Dispatchers.Main) { onProgress(progress) }
                             }
                         }
                     }
