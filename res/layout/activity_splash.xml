@@ -14,7 +14,7 @@
         android:textSize="32sp"
         android:textStyle="bold"
         android:gravity="center"
-        android:marginBottom="32dp"
+        android:layout_marginBottom="32dp"
         android:textColor="#333333" />
 
     <TextView
@@ -24,7 +24,7 @@
         android:text="Initializing..."
         android:textSize="14sp"
         android:gravity="center"
-        android:marginBottom="24dp"
+        android:layout_marginBottom="24dp"
         android:textColor="#666666" />
 
     <Spinner

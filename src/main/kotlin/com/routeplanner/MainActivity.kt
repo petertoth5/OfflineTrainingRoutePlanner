@@ -3,6 +3,9 @@ package com.routeplanner
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.SeekBar
@@ -13,6 +16,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.maps.model.LatLng
 import com.routeplanner.databinding.ActivityMainBinding
+import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.overlay.Marker
 import java.io.File
 import java.io.IOException
@@ -30,6 +34,8 @@ class MainActivity : AppCompatActivity() {
     private var currentRoute: Route? = null
     private var minTolerance: Int = 500 // default -500m (can be shorter)
     private var maxTolerance: Int = 500 // default +500m (can be longer)
+    private var locationManager: LocationManager? = null
+    private var userLocation: LatLng? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +48,7 @@ class MainActivity : AppCompatActivity() {
         mapManager = MapManager(this, binding.mapView)
         setupMapClickListener()
         setupToleranceSlider()
+        initializeLocation()
 
         binding.btnGenerate.setOnClickListener { generateRoute() }
         binding.btnClearStart.setOnClickListener { clearStart() }
@@ -145,13 +152,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun generateRoute() {
         try {
-            val startPoint = startMarker?.position
-            if (startPoint == null) {
+            val startPos = startMarker?.position
+            if (startPos == null) {
                 Toast.makeText(this, "Please select start point", Toast.LENGTH_SHORT).show()
                 return
             }
+            val startPoint = LatLng(startPos.latitude, startPos.longitude)
 
-            val endPoint = endMarker?.position ?: startPoint
+            val endPos = endMarker?.position
+            val endPoint = if (endPos != null) LatLng(endPos.latitude, endPos.longitude) else startPoint
 
             val distanceText = binding.etDistance.text.toString().trim()
             if (distanceText.isEmpty()) {
@@ -161,12 +170,12 @@ class MainActivity : AppCompatActivity() {
 
             val distance = distanceText.toDoubleOrNull()
             if (distance == null || distance <= 0) {
-                Toast.makeText(this, "Distance must be positive number (km)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Distance must be positive number (meters)", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            if (distance > 100) {
-                Toast.makeText(this, "Distance too large (max 100 km)", Toast.LENGTH_SHORT).show()
+            if (distance > 100000) {
+                Toast.makeText(this, "Distance too large (max 100000 meters)", Toast.LENGTH_SHORT).show()
                 return
             }
 
@@ -178,7 +187,7 @@ class MainActivity : AppCompatActivity() {
                     binding.btnGenerate.isEnabled = true
                     if (route != null) {
                         displayRoute(route)
-                        binding.tvStatus.text = "Route generated (${(route.distance/1000).toInt()} km). Ready to export."
+                        binding.tvStatus.text = "Route generated (${route.distance.toInt()} m). Ready to export."
                         binding.btnExport.isEnabled = true
                     } else {
                         binding.tvStatus.text = "Failed to generate route"
@@ -382,6 +391,31 @@ class MainActivity : AppCompatActivity() {
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
                 PERMISSION_REQUEST_CODE
             )
+        }
+    }
+
+    private fun initializeLocation() {
+        try {
+            locationManager = getSystemService(LOCATION_SERVICE) as? LocationManager
+            if (locationManager == null) return
+
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                val lastLocation = locationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    ?: locationManager?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+
+                if (lastLocation != null) {
+                    userLocation = LatLng(lastLocation.latitude, lastLocation.longitude)
+                    mapManager.centerOnPoint(userLocation!!, 15)
+                } else {
+                    mapManager.centerOnPoint(LatLng(47.5, 19.0), 6)
+                }
+            } else {
+                mapManager.centerOnPoint(LatLng(47.5, 19.0), 6)
+            }
+        } catch (e: Exception) {
+            mapManager.centerOnPoint(LatLng(47.5, 19.0), 6)
         }
     }
 

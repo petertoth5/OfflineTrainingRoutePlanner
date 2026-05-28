@@ -24,7 +24,7 @@
             android:text="Tap map to select start point"
             android:textSize="14sp"
             android:textColor="#333333"
-            android:marginBottom="8dp" />
+            android:layout_marginBottom="8dp" />
 
         <TextView
             android:id="@+id/tvStartPoint"
@@ -33,7 +33,7 @@
             android:text="Start: Not set"
             android:textSize="12sp"
             android:textColor="#666666"
-            android:marginBottom="4dp" />
+            android:layout_marginBottom="4dp" />
 
         <TextView
             android:id="@+id/tvEndPoint"
@@ -42,13 +42,13 @@
             android:text="End: Not set"
             android:textSize="12sp"
             android:textColor="#666666"
-            android:marginBottom="8dp" />
+            android:layout_marginBottom="8dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:marginBottom="8dp">
+            android:layout_marginBottom="8dp">
 
             <Button
                 android:id="@+id/btnClearStart"
@@ -57,7 +57,7 @@
                 android:layout_weight="1"
                 android:text="Clear Start"
                 android:textSize="12sp"
-                android:marginEnd="4dp" />
+                android:layout_marginEnd="4dp" />
 
             <Button
                 android:id="@+id/btnClearEnd"
@@ -66,7 +66,7 @@
                 android:layout_weight="1"
                 android:text="Clear End"
                 android:textSize="12sp"
-                android:marginStart="4dp" />
+                android:layout_marginStart="4dp" />
 
         </LinearLayout>
 
@@ -74,18 +74,21 @@
             android:id="@+id/etDistance"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Distance (km)"
+            android:hint="Distance (meters)"
             android:inputType="numberDecimal"
             android:textSize="14sp"
+            android:textColor="#333333"
+            android:textColorHint="#999999"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
-            android:marginBottom="12dp" />
+            android:layout_marginBottom="12dp"
+            android:backgroundTint="#ffffff" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:marginBottom="8dp">
+            android:layout_marginBottom="8dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -160,7 +163,7 @@
             android:layout_height="wrap_content"
             android:text="Generate Route"
             android:textSize="14sp"
-            android:marginBottom="8dp" />
+            android:layout_marginBottom="8dp" />
 
         <TextView
             android:id="@+id/tvRouteInfo"
@@ -169,13 +172,13 @@
             android:text="Route info will appear here"
             android:textSize="12sp"
             android:textColor="#666666"
-            android:marginBottom="8dp" />
+            android:layout_marginBottom="8dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:marginBottom="8dp">
+            android:layout_marginBottom="8dp">
 
             <Button
                 android:id="@+id/btnExport"
@@ -185,7 +188,7 @@
                 android:text="Export as GPX"
                 android:textSize="12sp"
                 android:enabled="false"
-                android:marginEnd="4dp" />
+                android:layout_marginEnd="4dp" />
 
             <Button
                 android:id="@+id/btnSettings"
@@ -194,7 +197,7 @@
                 android:layout_weight="1"
                 android:text="Settings"
                 android:textSize="12sp"
-                android:marginStart="4dp" />
+                android:layout_marginStart="4dp" />
 
         </LinearLayout>
 

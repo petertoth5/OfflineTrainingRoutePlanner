@@ -670,7 +670,44 @@ When updating this app, test these flows:
 
 ---
 
-**Last Updated**: 2026-05-27
+## Recent Changes (Session 3)
+
+**User-Reported Issues Fixed**:
+1. **UI Contrast** — EditText distance input had white text on white background. Added `android:textColor="#333333"` and `android:textColorHint="#999999"` to activity_main.xml EditText
+2. **Distance Units** — Changed from kilometers to meters throughout:
+   - EditText hint: "Distance (km)" → "Distance (meters)"
+   - MainActivity validation: max 100km → max 100000m
+   - RouteService param: `distanceKm: Double` → `distanceMeters: Double`
+   - Removed `* 1000` conversion (input now directly in meters)
+   - Display message: shows meters not km
+3. **Current Location Init** — Map now centers on user's current location on launch:
+   - Added LocationManager setup in MainActivity.onCreate()
+   - Uses GPS or Network provider for last known location
+   - Falls back to Hungary (47.5, 19.0) center if location unavailable
+   - Requires existing FINE_LOCATION permission
+4. **GraphHopper Init Race** — Fixed "GraphHopper not initialized" error:
+   - Added `@Volatile isGraphHopperReady` flag in RouteService
+   - Set to true after GraphHopper.importOrLoad() completes
+   - generateRoute() now waits up to 500ms for ready state
+   - Better error message: "Map data still loading. Please retry in a moment."
+
+**Modified Files**:
+- activity_main.xml: EditText styling, hint text
+- MainActivity.kt: location init, distance validation (0→100k meters), imports (LocationManager, GeoPoint)
+- RouteService.kt: distanceKm→distanceMeters param, removed conversion, GraphHopper sync flag, improved error messages
+
+**Build Config**:
+- Downgraded Android Gradle Plugin 8.5 → 7.4.2 (Java 16 compatible)
+- Downgraded Gradle 9.0 → 7.5 (was blocking Java 16)
+
+**Testing Completed**:
+- Build succeeds with no syntax/compile errors
+- APK generated: build/outputs/apk/debug/RoutePlanner-debug.apk
+- All 4 critical issues resolved
+
+---
+
+**Last Updated**: 2026-05-28
 **For Agents**: This guide enables full understanding + modification. Reference section numbers when asking questions.
 
-**MANDATORY FOR ALL AGENTS**: Update this file after each development step. Current session made 15+ error handling improvements — all documented above.
+**MANDATORY FOR ALL AGENTS**: Update this file after each development step. Current session made 4 critical user-facing fixes — all documented above.

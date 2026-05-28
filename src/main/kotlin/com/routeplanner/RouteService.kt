@@ -4,10 +4,12 @@ import android.content.Context
 import com.google.android.gms.maps.model.LatLng
 import com.graphhopper.GraphHopper
 import com.graphhopper.config.CHProfile
-import com.graphhopper.routing.util.EncodingManager
+import com.graphhopper.config.Profile
 import com.graphhopper.util.shapes.GHPoint
 import kotlinx.coroutines.*
 import java.io.File
+import java.io.IOException
+import java.util.Locale
 import kotlin.math.*
 
 class RouteService(private val context: Context) {
@@ -15,6 +17,7 @@ class RouteService(private val context: Context) {
     private var graphHopper: GraphHopper? = null
     private val scope = CoroutineScope(Dispatchers.Default + Job())
     private val dataManager = DataManager(context)
+    @Volatile private var isGraphHopperReady = false
 
     init {
         initializeGraphHopper()
@@ -33,19 +36,23 @@ class RouteService(private val context: Context) {
                 }
 
                 graphHopper = GraphHopper().apply {
-                    dataReaderFile = osmFile.absolutePath
+                    setOSMFile(osmFile.absolutePath)
                     val graphDir = File(context.cacheDir, "gh")
                     if (!graphDir.exists() && !graphDir.mkdirs()) {
-                        return@apply
+                        // Continue anyway
                     }
-                    graphFolder = graphDir.absolutePath
-                    profiles = listOf(
+                    setGraphHopperLocation(graphDir.absolutePath)
+                    setProfiles(
+                        Profile("foot").setVehicle("foot").setWeighting("fastest"),
+                        Profile("bike").setVehicle("bike").setWeighting("fastest")
+                    )
+                    getCHPreparationHandler().setCHProfiles(
                         CHProfile("foot"),
                         CHProfile("bike")
                     )
-                    ch.enabled = true
-                    build()
+                    importOrLoad()
                 }
+                isGraphHopperReady = true
             } catch (e: OutOfMemoryError) {
                 e.printStackTrace()
             } catch (e: Exception) {
@@ -57,16 +64,23 @@ class RouteService(private val context: Context) {
     fun generateRoute(
         startPoint: LatLng,
         endPoint: LatLng,
-        distanceKm: Double,
+        distanceMeters: Double,
         minToleranceMeters: Int = 500,
         maxToleranceMeters: Int = 500,
         callback: (Route?, String?) -> Unit
     ) {
         scope.launch {
             try {
-                val gh = graphHopper ?: return@launch callback(null, "GraphHopper not initialized")
+                if (!isGraphHopperReady) {
+                    Thread.sleep(500)
+                    if (!isGraphHopperReady) {
+                        return@launch callback(null, "Map data still loading. Please retry in a moment.")
+                    }
+                }
 
-                val targetDistance = distanceKm * 1000 // convert to meters
+                val gh = graphHopper ?: return@launch callback(null, "Map data not available. Try changing region.")
+
+                val targetDistance = distanceMeters
                 val minDistance = targetDistance - minToleranceMeters
                 val maxDistance = targetDistance + maxToleranceMeters
 
@@ -105,25 +119,24 @@ class RouteService(private val context: Context) {
             }
 
             // Query shortest path first using foot profile (avoids highways)
-            val request = gh.route(
+            val response = gh.route(
                 com.graphhopper.GHRequest(
                     GHPoint(start.latitude, start.longitude),
                     GHPoint(end.latitude, end.longitude)
                 ).apply {
-                    locale = "en"
-                    profile = "foot"
+                    setLocale(Locale.ENGLISH)
+                    setProfile("foot")
                     putHint("ch.disable", true) // disable CH for custom edge filtering
                 }
             )
 
-            val response = gh.route(request)
             if (response.hasErrors()) {
                 val error = response.errors.firstOrNull()?.message ?: "No route found"
                 return Pair(null, "Routing error: $error")
             }
 
             val shortestPath = response.best?.points
-            if (shortestPath == null || shortestPath.size == 0) {
+            if (shortestPath == null || shortestPath.size() == 0) {
                 return Pair(null, "No valid path found between points")
             }
 
@@ -151,10 +164,10 @@ class RouteService(private val context: Context) {
             }
 
             // Cannot fulfill requirements
-            val minKm = (minDistanceMeters / 1000).toInt()
-            val maxKm = (maxDistanceMeters / 1000).toInt()
-            val shortestKm = (shortestDistance / 1000).toInt()
-            return Pair(null, "Cannot generate $minKm-$maxKm km route. Shortest path is $shortestKm km.")
+            val minM = minDistanceMeters.toInt()
+            val maxM = maxDistanceMeters.toInt()
+            val shortestM = shortestDistance.toInt()
+            return Pair(null, "Cannot generate $minM-$maxM m route. Shortest path is $shortestM m.")
         } catch (e: OutOfMemoryError) {
             return Pair(null, "Out of memory: region data too large")
         } catch (e: Exception) {
@@ -210,8 +223,8 @@ class RouteService(private val context: Context) {
 
     private fun detectLoops(points: com.graphhopper.util.PointList): Boolean {
         // Simple loop detection: check if any segment intersects with another
-        for (i in 0 until points.size - 3) {
-            for (j in i + 2 until points.size - 1) {
+        for (i in 0 until points.size() - 3) {
+            for (j in i + 2 until points.size() - 1) {
                 if (segmentsIntersect(
                     points.getLat(i), points.getLon(i),
                     points.getLat(i + 1), points.getLon(i + 1),
@@ -239,12 +252,12 @@ class RouteService(private val context: Context) {
     }
 
     private fun latLngFromGHPoints(points: com.graphhopper.util.PointList): List<LatLng> {
-        return (0 until points.size).map { LatLng(points.getLat(it), points.getLon(it)) }
+        return (0 until points.size()).map { LatLng(points.getLat(it), points.getLon(it)) }
     }
 
     private fun distanceFromPoints(points: com.graphhopper.util.PointList): Double {
         var distance = 0.0
-        for (i in 0 until points.size - 1) {
+        for (i in 0 until points.size() - 1) {
             val lat1 = points.getLat(i)
             val lon1 = points.getLon(i)
             val lat2 = points.getLat(i + 1)

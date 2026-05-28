@@ -1,6 +1,6 @@
 plugins {
-    id("com.android.application") version "8.1.0"
-    kotlin("android") version "1.9.0"
+    id("com.android.application") version "7.4.2"
+    kotlin("android") version "1.9.22"
 }
 
 android {
@@ -19,9 +19,20 @@ android {
         viewBinding = true
     }
 
+    sourceSets {
+        getByName("main") {
+            manifest.srcFile("AndroidManifest.xml")
+            res.srcDirs("res")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
     }
 }
 
@@ -29,9 +40,10 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("com.google.android.material:material:1.9.0")
+    implementation("com.google.android.gms:play-services-maps:18.1.0")
     implementation("org.osmdroid:osmdroid-android:6.1.14")
     implementation("com.graphhopper:graphhopper-core:8.0")
-    implementation("com.graphhopper:graphhopper-reader-osm:8.0")
+    // implementation("com.graphhopper:graphhopper-reader-osm:8.0") // Merged into core
     implementation("org.slf4j:slf4j-api:2.0.9")
-    implementation("org.slf4j:slf4j-android:2.0.9")
+    implementation("uk.uuid.slf4j:slf4j-android:2.0.12-0")
 }
