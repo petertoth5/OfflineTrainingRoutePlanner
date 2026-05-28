@@ -711,29 +711,46 @@ When updating this app, test these flows:
 
 ## Recent Changes (Session 3 - Continued)
 
-**Additional Fixes**:
+**GraphHopper Profile Configuration Issues & Fixes**:
 5. **GraphHopper Initialization** — Refactored to be more robust:
    - Split into sync method `initializeGraphHopperSync()` + async background call
    - Initialize on dedicated thread in MainActivity.onCreate()
    - Show Toast if initialization fails with specific error message
    - Wait up to 30 seconds as fallback in generateRoute()
-   - Removed confusing isGraphHopperReady flag, use object null check instead
-6. **Auto Start Point** — New feature: app now auto-sets user's current location as start point
+   - Added detailed error logging for diagnostics
+
+6. **Profile API Struggles** (Session 3 continued):
+   - Initial error: "cannot create foot profile" with setWeighting("fastest")
+   - Fixed: Changed weighting to "shortest" (still failed)
+   - Attempted: Removed explicit weighting (still failed)
+   - Attempted: Tried GraphHopper 7.2 (build failed, API incompatible)
+   - Current: GraphHopper 8.0 with `setProfiles(listOf(Profile("car").setVehicle("car").setTurnCosts(false)))`
+   - Profile change for sports routing: car profile used for now (TODO: add foot/bike selector)
+
+7. **Auto Start Point** — Feature: app auto-sets user's current location as start point
    - Calls setStartPointToCurrentLocation() in initializeLocation()
    - Marker placed automatically, user can skip tapping start point
    - Uses FINE_LOCATION permission (already requested)
+   - User requested: profile selector dropdown with foot/bike options
 
 **Commits This Session**:
 1. `da6b869`: 4 critical UI fixes (contrast, units, location, GraphHopper sync)
 2. `23af0cf`: Build fixes (SLF4J 1.7.36, zoom level Double)
 3. `b41bfb0`: GraphHopper init refactor + auto start point
+4-N: Multiple GraphHopper profile configuration attempts (not all committed)
+
+**Outstanding Issues**:
+- GraphHopper profile configuration complex; foot/bike profiles fail with "cannot create weighting profile"
+- Currently using car profile as workaround
+- Need to implement profile selector UI (user requested: foot/bike dropdown)
+- OSM file corruption possible (user clearing cache helped before)
 
 **Testing Status**:
-- App installs successfully on device (SM-X510)
-- Builds without errors (Gradle 7.5, AGP 7.4.2, Java 16)
+- App builds successfully (Gradle 7.5, AGP 7.4.2, Java 16)
 - Location permission working, current location detected
-- GraphHopper initialization improved with better error handling
-- Auto start point feature functional
+- Auto start point feature working
+- GraphHopper initialization: still debugging profile configuration
+- Fresh install in progress, pending user test report
 
 ---
 
