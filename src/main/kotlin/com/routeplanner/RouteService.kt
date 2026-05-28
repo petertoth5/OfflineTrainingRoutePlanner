@@ -10,6 +10,7 @@ import java.io.File
 import java.io.IOException
 import java.util.Locale
 import kotlin.math.*
+import kotlin.math.PI
 
 class RouteService(private val context: Context) {
 
@@ -116,117 +117,128 @@ class RouteService(private val context: Context) {
         maxDistanceMeters: Double,
         profile: String = "foot"
     ): Pair<Route?, String?>? {
-        try {
-            val gh = graphHopper ?: return Pair(null, "Routing engine not ready. Retry in a moment.")
+        return try {
+            val gh = graphHopper ?: return Pair(null, "Routing engine not ready.")
 
-            if (start.latitude < -90 || start.latitude > 90 || start.longitude < -180 || start.longitude > 180) {
+            if (start.latitude < -90 || start.latitude > 90 || start.longitude < -180 || start.longitude > 180)
                 return Pair(null, "Invalid start point coordinates")
-            }
-
-            if (end.latitude < -90 || end.latitude > 90 || end.longitude < -180 || end.longitude > 180) {
+            if (end.latitude < -90 || end.latitude > 90 || end.longitude < -180 || end.longitude > 180)
                 return Pair(null, "Invalid end point coordinates")
+
+            val directDistM = haversineDistance(start.latitude, start.longitude, end.latitude, end.longitude)
+            val isCircular = directDistM < 200.0
+
+            // If target < shortest possible road distance, can't route
+            if (!isCircular) {
+                val directRoad = routeViaGH(gh, listOf(start, end), profile)
+                if (directRoad != null && !directRoad.hasErrors()) {
+                    val roadDist = directRoad.best?.distance ?: 0.0
+                    if (roadDist > maxDistanceMeters) {
+                        return Pair(null, "Shortest road path between points is ${roadDist.toInt()}m — exceeds target. Move points closer or increase distance.")
+                    }
+                }
             }
 
-            // Query shortest path using car profile
-            val response = gh.route(
-                com.graphhopper.GHRequest(
-                    GHPoint(start.latitude, start.longitude),
-                    GHPoint(end.latitude, end.longitude)
-                ).apply {
+            // Iterate with proportional scaling until distance is within tolerance
+            var scale = 1.0
+            var bestRoute: Route? = null
+            var bestDelta = Double.MAX_VALUE
+
+            for (attempt in 0..9) {
+                val waypoints = if (isCircular)
+                    generateCircularWaypoints(start, targetDistanceMeters, scale)
+                else
+                    generateDetourWaypoints(start, end, targetDistanceMeters, directDistM, scale)
+
+                val viaPoints = listOf(start) + waypoints + listOf(end)
+                val response = routeViaGH(gh, viaPoints, profile) ?: continue
+                if (response.hasErrors()) continue
+
+                val path = response.best ?: continue
+                val dist = path.distance
+                if (dist <= 0) continue
+
+                val delta = abs(dist - targetDistanceMeters)
+                if (delta < bestDelta) {
+                    bestDelta = delta
+                    bestRoute = Route(
+                        points = latLngFromGHPoints(path.points),
+                        distance = dist,
+                        hasLoops = isCircular || detectLoops(path.points)
+                    )
+                }
+
+                if (dist >= minDistanceMeters && dist <= maxDistanceMeters)
+                    return Pair(bestRoute, null)
+
+                // Proportional scale adjustment for next attempt
+                scale *= targetDistanceMeters / dist
+            }
+
+            if (bestRoute != null) {
+                val got = bestRoute.distance.toInt()
+                val tgt = targetDistanceMeters.toInt()
+                Pair(bestRoute, "Best route found: ${got}m (target ${tgt}m). Widen tolerance or adjust points.")
+            } else {
+                Pair(null, "Cannot generate route. No roads found near waypoints.")
+            }
+        } catch (e: OutOfMemoryError) {
+            Pair(null, "Out of memory: region data too large")
+        } catch (e: Exception) {
+            Pair(null, "Routing error: ${e.message}")
+        }
+    }
+
+    private fun routeViaGH(gh: GraphHopper, points: List<LatLng>, profile: String): com.graphhopper.GHResponse? {
+        return try {
+            val ghPoints = points.map { GHPoint(it.latitude, it.longitude) }
+            gh.route(
+                com.graphhopper.GHRequest(ghPoints).apply {
                     setLocale(Locale.ENGLISH)
                     setProfile(profile)
                     putHint("ch.disable", true)
                 }
             )
-
-            if (response.hasErrors()) {
-                val error = response.errors.firstOrNull()?.message ?: "No route found"
-                return Pair(null, "Routing error: $error")
-            }
-
-            val shortestPath = response.best?.points
-            if (shortestPath == null || shortestPath.size() == 0) {
-                return Pair(null, "No valid path found between points")
-            }
-
-            val shortestDistance = response.best.distance
-
-            if (shortestDistance <= 0) {
-                return Pair(null, "Points too close or invalid")
-            }
-
-            // If shortest path is within tolerance range, return it
-            if (shortestDistance >= minDistanceMeters && shortestDistance <= maxDistanceMeters) {
-                return Pair(Route(
-                    points = latLngFromGHPoints(shortestPath),
-                    distance = shortestDistance.toDouble(),
-                    hasLoops = detectLoops(shortestPath)
-                ), null)
-            }
-
-            // If too short, extend path by adding detours
-            if (shortestDistance < minDistanceMeters) {
-                val extendedRoute = extendRoute(start, end, targetDistanceMeters, shortestPath)
-                if (extendedRoute != null && extendedRoute.distance >= minDistanceMeters && extendedRoute.distance <= maxDistanceMeters) {
-                    return Pair(extendedRoute, null)
-                }
-            }
-
-            // Cannot fulfill requirements
-            val minM = minDistanceMeters.toInt()
-            val maxM = maxDistanceMeters.toInt()
-            val shortestM = shortestDistance.toInt()
-            return Pair(null, "Cannot generate $minM-$maxM m route. Shortest path is $shortestM m.")
-        } catch (e: OutOfMemoryError) {
-            return Pair(null, "Out of memory: region data too large")
         } catch (e: Exception) {
-            return Pair(null, "Routing error: ${e.message}")
+            null
         }
     }
 
-    private fun extendRoute(
-        start: LatLng,
-        end: LatLng,
-        targetDistance: Double,
-        basePath: com.graphhopper.util.PointList
-    ): Route? {
-        val baseDistance = distanceFromPoints(basePath)
-        val extraDistance = targetDistance - baseDistance
-
-        if (extraDistance <= 0) {
-            return Route(
-                points = latLngFromGHPoints(basePath),
-                distance = baseDistance.toDouble()
-            )
+    // Circular route: 3 waypoints at 120° intervals around the center.
+    // Radius starts at targetDist / (2π) and is scaled each iteration.
+    private fun generateCircularWaypoints(center: LatLng, targetDist: Double, scale: Double): List<LatLng> {
+        val r = (targetDist / (2 * PI)) * scale
+        val latDeg = r / 111000.0
+        val lonDeg = r / (111000.0 * cos(Math.toRadians(center.latitude)))
+        return (0..2).map { i ->
+            val angle = Math.toRadians(i * 120.0)
+            LatLng(center.latitude + latDeg * cos(angle), center.longitude + lonDeg * sin(angle))
         }
-
-        // Simple extension: add detours at midpoints
-        val extendedPoints = mutableListOf<LatLng>()
-        val points = latLngFromGHPoints(basePath)
-
-        for (i in points.indices) {
-            extendedPoints.add(points[i])
-
-            // Add detour waypoint at certain intervals
-            if (i < points.size - 1 && i % 5 == 0) {
-                val detour = createDetour(points[i], points[i + 1], extraDistance / 10)
-                extendedPoints.add(detour)
-            }
-        }
-
-        val finalDistance = distanceFromLatLng(extendedPoints)
-        return Route(
-            points = extendedPoints,
-            distance = finalDistance.toDouble()
-        )
     }
 
-    private fun createDetour(from: LatLng, to: LatLng, extraDist: Double): LatLng {
-        // Perpendicular offset to create mild detour
-        val midLat = (from.latitude + to.latitude) / 2
-        val midLng = (from.longitude + to.longitude) / 2
-        val offset = (extraDist / 100000) // rough conversion to degrees
-        return LatLng(midLat + offset, midLng + offset)
+    // A→B detour: single waypoint offset perpendicularly from the midpoint of A→B.
+    // Offset h derived from the right-triangle geometry of A→P→B.
+    private fun generateDetourWaypoints(start: LatLng, end: LatLng, targetDist: Double, directDist: Double, scale: Double): List<LatLng> {
+        val midLat = (start.latitude + end.latitude) / 2.0
+        val midLon = (start.longitude + end.longitude) / 2.0
+
+        // Perpendicular unit vector to the start→end direction
+        val dLat = end.latitude - start.latitude
+        val dLon = end.longitude - start.longitude
+        val len = sqrt(dLat * dLat + dLon * dLon)
+        val perpLat = if (len > 1e-9) -dLon / len else 1.0
+        val perpLon = if (len > 1e-9) dLat / len else 0.0
+
+        // h = perpendicular offset so that A→P→B ≈ targetDist
+        val half = targetDist / 2.0
+        val halfDirect = directDist / 2.0
+        val h = if (half > halfDirect) sqrt(half * half - halfDirect * halfDirect) else targetDist * 0.4
+
+        val hScaled = h * scale
+        val latOffset = (hScaled / 111000.0) * perpLat
+        val lonOffset = (hScaled / (111000.0 * cos(Math.toRadians(midLat)))) * perpLon
+
+        return listOf(LatLng(midLat + latOffset, midLon + lonOffset))
     }
 
 
