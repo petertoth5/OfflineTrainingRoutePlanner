@@ -1,0 +1,23 @@
+# Build output
+/build/
+*.apk
+*.aab
+*.dex
+
+# Gradle cache (project-local)
+/.gradle/
+local.properties
+
+# IDE — keep .idea config, ignore generated/personal files
+.idea/caches/
+.idea/deploymentTargetSelector.xml
+.idea/planningMode.xml
+.idea/migrations.xml
+.idea/markdown.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude local settings (machine-specific)
+.claude/settings.local.json
