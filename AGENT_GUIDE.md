@@ -699,6 +699,8 @@ When updating this app, test these flows:
 **Build Config**:
 - Downgraded Android Gradle Plugin 8.5 → 7.4.2 (Java 16 compatible)
 - Downgraded Gradle 9.0 → 7.5 (was blocking Java 16)
+- Fixed SLF4J DEX error: downgraded slf4j-api 2.0.9 → 1.7.36, slf4j-android 2.0.12 → 1.7.36
+- Fixed zoom level parameter type: Int → Double (LatLng zoom expects Double)
 
 **Testing Completed**:
 - Build succeeds with no syntax/compile errors

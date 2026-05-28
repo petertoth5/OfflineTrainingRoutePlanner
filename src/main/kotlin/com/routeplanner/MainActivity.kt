@@ -407,15 +407,15 @@ class MainActivity : AppCompatActivity() {
 
                 if (lastLocation != null) {
                     userLocation = LatLng(lastLocation.latitude, lastLocation.longitude)
-                    mapManager.centerOnPoint(userLocation!!, 15)
+                    mapManager.centerOnPoint(userLocation!!, 15.0)
                 } else {
-                    mapManager.centerOnPoint(LatLng(47.5, 19.0), 6)
+                    mapManager.centerOnPoint(LatLng(47.5, 19.0), 6.0)
                 }
             } else {
-                mapManager.centerOnPoint(LatLng(47.5, 19.0), 6)
+                mapManager.centerOnPoint(LatLng(47.5, 19.0), 6.0)
             }
         } catch (e: Exception) {
-            mapManager.centerOnPoint(LatLng(47.5, 19.0), 6)
+            mapManager.centerOnPoint(LatLng(47.5, 19.0), 6.0)
         }
     }
 
