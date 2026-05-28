@@ -21,3 +21,8 @@ Thumbs.db
 
 # Claude local settings (machine-specific)
 .claude/settings.local.json
+
+# Signing — never commit keystore or passwords
+*.jks
+*.keystore
+keystore.properties
