@@ -709,7 +709,35 @@ When updating this app, test these flows:
 
 ---
 
+## Recent Changes (Session 3 - Continued)
+
+**Additional Fixes**:
+5. **GraphHopper Initialization** — Refactored to be more robust:
+   - Split into sync method `initializeGraphHopperSync()` + async background call
+   - Initialize on dedicated thread in MainActivity.onCreate()
+   - Show Toast if initialization fails with specific error message
+   - Wait up to 30 seconds as fallback in generateRoute()
+   - Removed confusing isGraphHopperReady flag, use object null check instead
+6. **Auto Start Point** — New feature: app now auto-sets user's current location as start point
+   - Calls setStartPointToCurrentLocation() in initializeLocation()
+   - Marker placed automatically, user can skip tapping start point
+   - Uses FINE_LOCATION permission (already requested)
+
+**Commits This Session**:
+1. `da6b869`: 4 critical UI fixes (contrast, units, location, GraphHopper sync)
+2. `23af0cf`: Build fixes (SLF4J 1.7.36, zoom level Double)
+3. `b41bfb0`: GraphHopper init refactor + auto start point
+
+**Testing Status**:
+- App installs successfully on device (SM-X510)
+- Builds without errors (Gradle 7.5, AGP 7.4.2, Java 16)
+- Location permission working, current location detected
+- GraphHopper initialization improved with better error handling
+- Auto start point feature functional
+
+---
+
 **Last Updated**: 2026-05-28
 **For Agents**: This guide enables full understanding + modification. Reference section numbers when asking questions.
 
-**MANDATORY FOR ALL AGENTS**: Update this file after each development step. Current session made 4 critical user-facing fixes — all documented above.
+**MANDATORY FOR ALL AGENTS**: Update this file after each development step. Current session made significant improvements to initialization + UX — all documented above.
