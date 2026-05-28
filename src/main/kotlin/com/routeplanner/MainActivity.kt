@@ -3,13 +3,13 @@ package com.routeplanner
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Build
+import android.net.Uri
 import android.os.Bundle
+import java.io.File
 import android.widget.SeekBar
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -18,8 +18,6 @@ import com.google.android.gms.maps.model.LatLng
 import com.routeplanner.databinding.ActivityMainBinding
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.overlay.Marker
-import java.io.File
-import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -27,6 +25,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var mapManager: MapManager
+
+    private val saveGpxLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            result.data?.data?.let { uri -> saveGpxToUri(uri) }
+        }
+    }
     private var startMarker: Marker? = null
     private var endMarker: Marker? = null
     private var isSelectingStart = true
@@ -264,50 +268,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exportRoute() {
-        try {
-            val route = currentRoute
-            if (route == null) {
-                Toast.makeText(this, "No route generated yet", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-            val filename = "route_${sdf.format(Date())}.gpx"
-
-            val file = routeService.exportGpx(route, filename)
-            if (file != null) {
-                Toast.makeText(this, "Exported to: ${file.absolutePath}", Toast.LENGTH_LONG).show()
-                copyToDownloads(file)
-            } else {
-                Toast.makeText(this, "Export failed: could not write GPX file", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception) {
-            Toast.makeText(this, "Export error: ${e.message}", Toast.LENGTH_SHORT).show()
+        if (currentRoute == null) {
+            Toast.makeText(this, "No route generated yet", Toast.LENGTH_SHORT).show()
+            return
         }
+        val filename = "route_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.gpx"
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/gpx+xml"
+            putExtra(Intent.EXTRA_TITLE, filename)
+        }
+        saveGpxLauncher.launch(intent)
     }
 
-    private fun copyToDownloads(sourceFile: File) {
+    private fun saveGpxToUri(uri: Uri) {
         try {
-            val downloadsDir = getExternalFilesDir("Downloads")
-            if (downloadsDir == null) {
-                Toast.makeText(this, "Downloads directory not available", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            if (!downloadsDir.mkdirs() && !downloadsDir.exists()) {
-                Toast.makeText(this, "Could not create Downloads directory", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            val destFile = File(downloadsDir, sourceFile.name)
-            sourceFile.copyTo(destFile, overwrite = true)
-            Toast.makeText(this, "Also saved to Downloads folder", Toast.LENGTH_SHORT).show()
-        } catch (e: SecurityException) {
-            Toast.makeText(this, "Permission denied: cannot write to Downloads", Toast.LENGTH_SHORT).show()
-        } catch (e: IOException) {
-            Toast.makeText(this, "IO error: ${e.message}", Toast.LENGTH_SHORT).show()
+            val gpx = currentRoute?.toGpx() ?: return
+            contentResolver.openOutputStream(uri)?.use { it.write(gpx.toByteArray()) }
+            Toast.makeText(this, "GPX saved", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            Toast.makeText(this, "Error copying to Downloads: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Save failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
