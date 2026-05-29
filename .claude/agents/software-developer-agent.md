@@ -33,7 +33,11 @@ The Software Developer Agent is the specialist responsible for translating algor
 - **Context preservation** — Opus's context window allows holding AGENT_GUIDE.md, specs from Algorithm/UI agents, and current codebase state
 - **Iterative refinement** — Can adjust implementation if tests fail or specs are incomplete, without losing sight of the larger goal
 
-Model is NOT Sonnet (insufficient context for multi-spec coordination), NOT Haiku (lacks reasoning depth for complex Android issues), NOT earlier Opus (less reliable for subtle constraint handling).
+This selection rules out:
+
+- **NOT Sonnet** — Insufficient context window for multi-spec coordination
+- **NOT Haiku** — Lacks reasoning depth for complex Android issues  
+- **NOT earlier Opus** — Less reliable for subtle constraint handling
 
 ---
 
@@ -110,7 +114,7 @@ When a bug is reported:
 - Profile toggle (Running/Biking) with distance field updates
 - Tolerance sliders (min/max) with live display
 - Route generation button and flow control
-- Map display via MapManager (clearRoute vs. clear distinction)
+- Map display via MapManager (see Critical Safety Rules: mapManager API)
 - Export as GPX via SAF file picker
 - Status display and button enable/disable logic
 
@@ -118,7 +122,7 @@ When a bug is reported:
 - Marker placement (start, end, optional waypoints)
 - Polyline display (route line with styling)
 - Zoom and pan logic
-- `clear()` vs. `clearRoute()` distinction (critical)
+- `clear()` vs. `clearRoute()` distinction (see Critical Safety Rules: mapManager API)
 
 **DataManager.kt** — OSM data and preferences
 - Download management, progress callbacks
@@ -144,7 +148,7 @@ When a bug is reported:
 
 **Critical safety rules**:
 - **Never upgrade GraphHopper past 6.0** — Breaking change for Android
-- **Never call `mapManager.clear()` after route display** — Removes MapTouchOverlay and breaks tapping. Use `mapManager.clearRoute()` instead.
+- **mapManager.clear() vs. clearRoute()** — See "Critical Safety Rules: mapManager API" in Mandatory Constraints & Rules
 - **Bump `profileFingerprint` when profiles change** — If GH profiles are edited (weighting, turnCosts), increment fingerprint string (e.g., `"foot_bike_gh6_v1"` → `"foot_bike_gh6_v2"`). If saved after import and process is killed mid-import, next launch sees mismatch → infinite restart loop. Always save fingerprint BEFORE import.
 - **Update AGENT_GUIDE.md after each step** — This is the source of truth; keep it current
 
@@ -348,11 +352,19 @@ For ambiguous inputs, the Software Developer asks clarifying questions before im
 
 3. **Profile fingerprint must be bumped when profiles change** — In `RouteService.initializeGraphHopperSync()`, if you edit foot/bike profile definitions (weighting, turnCosts), increment the `profileFingerprint` string constant (e.g., `"foot_bike_gh6_v1"` → `"foot_bike_gh6_v2"`). This triggers cache invalidation on next launch. **CRITICAL**: Save fingerprint BEFORE starting the import. If saved after import starts and process is killed mid-import, next launch sees mismatch → wipes cache → re-imports → repeat loop.
 
-4. **Never call `mapManager.clear()` after route display** — `clear()` removes ALL overlays including `MapTouchOverlay`, breaking map tapping. Always use `mapManager.clearRoute()` to remove only route polylines. Only call `clear()` during full reset (e.g., back to initial state).
+#### Critical Safety Rules: mapManager API
 
-5. **Always update AGENT_GUIDE.md after implementation** — Document any algorithm changes, new constraints, file structure updates. This is the source of truth for all future agents. Update "Last Updated" timestamp.
+Always follow these rules when using MapManager overlays:
 
-6. **Test and commit frequently** — Don't do large unreviewed changes. Break work into logical commits (one feature per commit, clear messages).
+- **Never call `mapManager.clear()` after route display** — `clear()` removes ALL overlays including `MapTouchOverlay`, breaking map tapping. This is a critical bug vector. See Pitfall 2 for details.
+- **Always use `mapManager.clearRoute()` to remove only route polylines** after displaying a route. Preserves MapTouchOverlay and map interactivity.
+- **Only call `mapManager.clear()`** during full reset scenarios (e.g., back to initial map state when user cancels route or navigates away). Not after normal route display.
+
+Rationale: The difference between `clear()` (removes all) and `clearRoute()` (removes only route) is easy to confuse but critical for UX. Map becomes unresponsive if you call `clear()` at the wrong time.
+
+4. **Always update AGENT_GUIDE.md after implementation** — Document any algorithm changes, new constraints, file structure updates. This is the source of truth for all future agents. Update "Last Updated" timestamp.
+
+5. **Test and commit frequently** — Don't do large unreviewed changes. Break work into logical commits (one feature per commit, clear messages).
 
 ### Kotlin/Android Best Practices
 
@@ -483,9 +495,9 @@ When implementing, ask:
 
 **Symptom**: Map becomes unresponsive after generating route; user can't tap to select new points
 **Cause**: `clear()` removed MapTouchOverlay
-**Prevention**: Always use `clearRoute()` after route display; reserve `clear()` for full reset only
+**Prevention**: See Critical Safety Rules: mapManager API. Always use `clearRoute()` after route display; reserve `clear()` for full reset only
 
-### Pitfall 3: UnChecked casts or Nullability Warnings
+### Pitfall 3: Unchecked casts or Nullability Warnings
 
 **Symptom**: Lint warnings in code review; potential crashes from unsafe casts
 **Cause**: Developer suppressed warnings instead of fixing
@@ -510,6 +522,10 @@ When implementing, ask:
 
 **Version**: 1.0 (Initial agent definition)
 
+**Author**: Claude (Haiku 4.5)
+
+**Reviewed by**: Project Team
+
 ---
 
 ## Quick Reference for Software Developer
@@ -520,7 +536,7 @@ When implementing, ask:
 
 **Primary workflow**: Receive spec from Algorithm/UI Developer → Implement in Kotlin/XML → Test → Commit → Report to Orchestrator
 
-**Non-negotiable**: GraphHopper 6.0 only, largeHeap required, profileFingerprint bumped on profile changes, mapManager.clearRoute() not clear(), update AGENT_GUIDE.md, commit frequently with clear messages
+**Non-negotiable**: GraphHopper 6.0 only, largeHeap required, profileFingerprint bumped on profile changes, mapManager API (see Critical Safety Rules), update AGENT_GUIDE.md, commit frequently with clear messages
 
 **Testing**: Unit tests for logic, integration tests for workflows, manual tests on device/emulator
 
