@@ -9,7 +9,7 @@
         <item name="android:minHeight">48dp</item>
     </style>
 
-    <style name="Widget.Button.Outlined" parent="Widget.MaterialComponents.OutlinedButton">
+    <style name="Widget.Button.Outlined" parent="Widget.MaterialComponents.Button.OutlinedButton">
         <item name="strokeColor">@color/primary_blue</item>
         <item name="strokeWidth">2dp</item>
         <item name="android:textColor">@color/primary_blue</item>
