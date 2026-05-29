@@ -13,34 +13,34 @@
         android:translateY="10">
         <!-- Head -->
         <path
-            android:fillColor="#FFFFFF"
+            android:fillColor="@color/primary_blue"
             android:pathData="M13.49,5.48c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2z"/>
         <!-- Body and limbs -->
         <path
-            android:fillColor="#FFFFFF"
+            android:fillColor="@color/primary_blue"
             android:pathData="M9.89,19.38l1,-4.4 2.1,2v6h2v-7.5l-2.1,-2 0.6,-3c1.3,1.5 3.3,2.5 5.5,2.5v-2c-1.9,0 -3.5,-1 -4.3,-2.4l-1,-1.6c-0.4,-0.6 -1,-1 -1.7,-1c-0.3,0 -0.5,0.1 -0.8,0.1l-5.2,2.2v4.7h2v-3.4l1.8,-0.7 -1.6,8.1 -4.9,-1 -0.4,2 7,1.4z"/>
     </group>
 
     <!-- Route start dot -->
     <path
-        android:fillColor="#FFFFFF"
+        android:fillColor="@color/start_point_green"
         android:pathData="M14,84 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0"/>
 
     <!-- Route path: wavy line from start dot to map pin -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
+        android:strokeColor="@color/primary_blue"
         android:strokeWidth="3.5"
         android:strokeLineCap="round"
         android:pathData="M14,84 C22,77 30,91 40,84 C50,77 60,91 70,84 C76,80 80,79 84,79"/>
 
     <!-- Map pin (destination) -->
     <path
-        android:fillColor="#FFFFFF"
+        android:fillColor="@color/end_point_red"
         android:pathData="M88,70 C82,70 77,74 77,80 C77,86 88,93 88,93 C88,93 99,86 99,80 C99,74 94,70 88,70 Z"/>
-    <!-- Pin inner circle (background colour punched through) -->
+    <!-- Pin inner circle (primary blue accent) -->
     <path
-        android:fillColor="#1565C0"
+        android:fillColor="@color/primary_blue"
         android:pathData="M88,80 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0"/>
 
 </vector>
