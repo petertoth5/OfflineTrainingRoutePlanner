@@ -41,6 +41,39 @@ class MapManager(private val context: Context, private val mapView: MapView) {
         }
     }
 
+    /**
+     * Makes a marker draggable and reports its final position when the user releases it.
+     * onDragEnd fires once per drop with the marker's new LatLng (suitable for triggering a
+     * route regeneration). onDrag fires continuously during the drag for live UI feedback and
+     * may be omitted.
+     */
+    fun makeMarkerDraggable(
+        marker: Marker?,
+        onDragEnd: (LatLng) -> Unit,
+        onDrag: ((LatLng) -> Unit)? = null
+    ) {
+        try {
+            if (marker == null) return
+            marker.isDraggable = true
+            marker.setOnMarkerDragListener(object : Marker.OnMarkerDragListener {
+                override fun onMarkerDragStart(m: Marker?) {}
+
+                override fun onMarkerDrag(m: Marker?) {
+                    val p = m?.position ?: return
+                    onDrag?.invoke(LatLng(p.latitude, p.longitude))
+                }
+
+                override fun onMarkerDragEnd(m: Marker?) {
+                    val p = m?.position ?: return
+                    onDragEnd(LatLng(p.latitude, p.longitude))
+                }
+            })
+            mapView.invalidate()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun removeMarker(marker: Marker?) {
         try {
             if (marker != null) {

@@ -17,6 +17,22 @@ class RouteService(private val context: Context) {
     @Volatile private var graphHopper: GraphHopper? = null
     private val scope = CoroutineScope(Dispatchers.Default + Job())
     private val dataManager = DataManager(context)
+    private val random = kotlin.random.Random.Default
+
+    // Per-generation variety parameters. Picked once per generateRoute() call so the geometry is
+    // stable across the proportional-scaling iterations (changing shape each attempt would prevent
+    // the distance from converging). See calculateRoute().
+    private data class RouteVariety(
+        val circularStartAngle: Double,
+        val circularPointCount: Int,
+        val circularAngleJitter: List<Double>,
+        val circularRadiusJitter: List<Double>,
+        val detourSide: Double,
+        val detourFrac1: Double,
+        val detourFrac2: Double,
+        val detourOffset1Factor: Double,
+        val detourOffset2Factor: Double
+    )
 
     fun initializeGraphHopperSync(): String {
         return try {
@@ -128,6 +144,25 @@ class RouteService(private val context: Context) {
             val directDistM = haversineDistance(start.latitude, start.longitude, end.latitude, end.longitude)
             val isCircular = directDistM < 200.0
 
+            // Variety parameters chosen ONCE per generation. Re-randomising inside the scaling
+            // loop would change the shape every attempt and break distance convergence. Each call
+            // to generateRoute() therefore yields a different (but internally consistent) shape.
+            val variety = RouteVariety(
+                // Circular: rotate the whole polygon by a random base angle and use 3..5 vertices
+                // with small per-vertex angular jitter and per-vertex radius jitter.
+                circularStartAngle = random.nextDouble(0.0, 2 * PI),
+                circularPointCount = random.nextInt(3, 6), // 3, 4 or 5 waypoints
+                circularAngleJitter = (0..4).map { random.nextDouble(-0.20, 0.20) },
+                circularRadiusJitter = (0..4).map { random.nextDouble(0.80, 1.20) },
+                // Detour: which side of the A->B line the loop bulges, plus where along the line
+                // the two control waypoints sit, plus asymmetric offsets for an S/arc shape.
+                detourSide = if (random.nextBoolean()) 1.0 else -1.0,
+                detourFrac1 = random.nextDouble(0.28, 0.40),
+                detourFrac2 = random.nextDouble(0.60, 0.72),
+                detourOffset1Factor = random.nextDouble(0.85, 1.15),
+                detourOffset2Factor = random.nextDouble(0.85, 1.15)
+            )
+
             // If target < shortest possible road distance, can't route
             if (!isCircular) {
                 val directRoad = routeViaGH(gh, listOf(start, end), profile)
@@ -146,9 +181,9 @@ class RouteService(private val context: Context) {
 
             for (attempt in 0..9) {
                 val waypoints = if (isCircular)
-                    generateCircularWaypoints(start, targetDistanceMeters, scale)
+                    generateCircularWaypoints(start, targetDistanceMeters, scale, variety)
                 else
-                    generateDetourWaypoints(start, end, targetDistanceMeters, directDistM, scale)
+                    generateDetourWaypoints(start, end, targetDistanceMeters, directDistM, scale, variety)
 
                 val viaPoints = listOf(start) + waypoints + listOf(end)
                 val response = routeViaGH(gh, viaPoints, profile) ?: continue
@@ -229,41 +264,55 @@ class RouteService(private val context: Context) {
         return (Math.toDegrees(atan2(x, y)) + 360) % 360
     }
 
-    // Circular route: 3 waypoints at 120° intervals around the center.
-    // Radius starts at targetDist / (2π) and is scaled each iteration.
-    private fun generateCircularWaypoints(center: LatLng, targetDist: Double, scale: Double): List<LatLng> {
-        val r = (targetDist / (2 * PI)) * scale
-        val latDeg = r / 111000.0
-        val lonDeg = r / (111000.0 * cos(Math.toRadians(center.latitude)))
-        return (0..2).map { i ->
-            val angle = Math.toRadians(i * 120.0)
+    // Circular route: N waypoints (3..5) spaced evenly around the center, but with a random base
+    // rotation plus per-vertex angular and radius jitter so each generation produces a visibly
+    // different polygon shape instead of the same equilateral triangle every time.
+    // Radius starts at targetDist / (2π) and is scaled each iteration to converge on the target.
+    private fun generateCircularWaypoints(center: LatLng, targetDist: Double, scale: Double, variety: RouteVariety): List<LatLng> {
+        val n = variety.circularPointCount
+        val baseR = (targetDist / (2 * PI)) * scale
+        val step = 2 * PI / n
+        return (0 until n).map { i ->
+            val angle = variety.circularStartAngle + i * step + variety.circularAngleJitter[i]
+            val r = baseR * variety.circularRadiusJitter[i]
+            val latDeg = r / 111000.0
+            val lonDeg = r / (111000.0 * cos(Math.toRadians(center.latitude)))
             LatLng(center.latitude + latDeg * cos(angle), center.longitude + lonDeg * sin(angle))
         }
     }
 
-    // A→B detour: single waypoint offset perpendicularly from the midpoint of A→B.
-    // Offset h derived from the right-triangle geometry of A→P→B.
-    private fun generateDetourWaypoints(start: LatLng, end: LatLng, targetDist: Double, directDist: Double, scale: Double): List<LatLng> {
-        val midLat = (start.latitude + end.latitude) / 2.0
-        val midLon = (start.longitude + end.longitude) / 2.0
-
+    // A→B detour: TWO waypoints offset perpendicularly from points along the A→B line (at
+    // randomised fractions of the way), both bulging to a randomly chosen side with asymmetric
+    // offsets. This yields varied arc/curve shapes rather than a single fixed perpendicular point.
+    // Total perpendicular offset h is derived from the right-triangle geometry of A→P→B so the
+    // routed distance still scales toward targetDist.
+    private fun generateDetourWaypoints(start: LatLng, end: LatLng, targetDist: Double, directDist: Double, scale: Double, variety: RouteVariety): List<LatLng> {
         // Perpendicular unit vector to the start→end direction
         val dLat = end.latitude - start.latitude
         val dLon = end.longitude - start.longitude
         val len = sqrt(dLat * dLat + dLon * dLon)
-        val perpLat = if (len > 1e-9) -dLon / len else 1.0
-        val perpLon = if (len > 1e-9) dLat / len else 0.0
+        val perpLat = (if (len > 1e-9) -dLon / len else 1.0) * variety.detourSide
+        val perpLon = (if (len > 1e-9) dLat / len else 0.0) * variety.detourSide
 
         // h = perpendicular offset so that A→P→B ≈ targetDist
         val half = targetDist / 2.0
         val halfDirect = directDist / 2.0
         val h = if (half > halfDirect) sqrt(half * half - halfDirect * halfDirect) else targetDist * 0.4
-
         val hScaled = h * scale
-        val latOffset = (hScaled / 111000.0) * perpLat
-        val lonOffset = (hScaled / (111000.0 * cos(Math.toRadians(midLat)))) * perpLon
 
-        return listOf(LatLng(midLat + latOffset, midLon + lonOffset))
+        fun pointAt(frac: Double, offsetFactor: Double): LatLng {
+            val baseLat = start.latitude + (end.latitude - start.latitude) * frac
+            val baseLon = start.longitude + (end.longitude - start.longitude) * frac
+            val off = hScaled * offsetFactor
+            val latOffset = (off / 111000.0) * perpLat
+            val lonOffset = (off / (111000.0 * cos(Math.toRadians(baseLat)))) * perpLon
+            return LatLng(baseLat + latOffset, baseLon + lonOffset)
+        }
+
+        return listOf(
+            pointAt(variety.detourFrac1, variety.detourOffset1Factor),
+            pointAt(variety.detourFrac2, variety.detourOffset2Factor)
+        )
     }
 
 

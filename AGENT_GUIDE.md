@@ -371,6 +371,7 @@ Checks `DataManager.hasOsmData()`. If missing → region spinner + download butt
 - `seekBarMinTolerance` / `seekBarMaxTolerance`: route can be shorter/longer by this many meters (default 500m each)
 - **New Route** button: clears route polyline, both markers, resets all state to "Tap map to select start point"
 - **Export as GPX**: opens Android SAF file picker (`ACTION_CREATE_DOCUMENT`) — user browses and picks save location; written via `contentResolver.openOutputStream(uri)`
+- **Draggable markers**: start and end markers are draggable (`MapManager.makeMarkerDraggable()`). Drag-end updates the coordinate display via `attachStartMarkerDrag()` / `attachEndMarkerDrag()`. `onWaypointMoved()` then **regenerates the route automatically** if one is already displayed and the engine is ready; otherwise it prompts the user to tap Generate. Drag listeners are (re)attached every time a marker is created — on map tap, and on GPS auto-placement in `setStartPointToCurrentLocation()`.
 
 Key fields: `selectedProfile: String`, `minTolerance: Int`, `maxTolerance: Int`, `saveGpxLauncher` (ActivityResultLauncher).
 
@@ -390,13 +391,19 @@ Priority is route **length**, not shortest path. Generates intermediate GH waypo
 ```
 isCircular = haversine(start, end) < 200m
 
+variety = RouteVariety(...)   # randomised ONCE per generateRoute() call (see below)
+
 for attempt in 0..9:
     waypoints = if isCircular:
-        generateCircularWaypoints(center, targetDist, scale)
-        # 3 waypoints at 120° intervals, radius = targetDist/(2π) × scale
+        generateCircularWaypoints(center, targetDist, scale, variety)
+        # N waypoints (N = 3..5) evenly spaced, randomly rotated, with per-vertex
+        # angular jitter (±0.20 rad) and radius jitter (×0.80..1.20).
+        # base radius = targetDist/(2π) × scale
     else:
-        generateDetourWaypoints(start, end, targetDist, directDist, scale)
-        # 1 perpendicular midpoint, offset h = sqrt((target/2)²-(direct/2)²) × scale
+        generateDetourWaypoints(start, end, targetDist, directDist, scale, variety)
+        # 2 waypoints at randomised fractions (≈0.28..0.40 and ≈0.60..0.72) along A→B,
+        # offset to a randomly chosen side with asymmetric factors → arc/curve shapes.
+        # base offset h = sqrt((target/2)²-(direct/2)²) × scale
 
     route = routeViaGH([start] + waypoints + [end], profile)
     if route.distance in [minDist, maxDist]: return route
@@ -404,6 +411,8 @@ for attempt in 0..9:
 ```
 
 All waypoints are real GH routing calls → all segments follow actual roads.
+
+**Route variety (`RouteVariety`)**: The shape parameters (rotation, vertex count, jitter, detour side/fractions) are chosen **once per `generateRoute()` call** and held constant across the 10 scaling attempts. This is intentional — re-randomising the geometry inside the loop would change the shape every attempt and prevent the routed distance from converging on the target. Consequence: each press of Generate Route (or each waypoint drag that triggers regeneration) yields a different but internally consistent shape, replacing the old fixed equilateral-triangle / single-perpendicular-point behaviour. Randomness source is `kotlin.random.Random.Default` (NOT `java.util.Random`, which lacks the ranged `nextDouble(from, until)` / `nextInt(from, until)` overloads).
 
 **Anti-backtracking**: `routeViaGH()` calculates bearing from each consecutive waypoint pair and passes `setHeadings(bearings)` + `putHint("heading_penalty", 300.0)` to GH — penalises routes that approach a waypoint from the wrong direction (avoids U-turns on same road segment). Falls back to no-headings if GH rejects it.
 
@@ -423,6 +432,7 @@ Static object, 14 European regions. Default: Hungary (~190MB). Add regions by ap
 osmdroid wrapper. Accepts `LatLng`, converts to `GeoPoint` internally.
 - `clear()` — removes ALL overlays including `MapTouchOverlay` (use only on full reset)
 - `clearRoute()` — removes only `Polyline` overlays; safe to call after generating a route
+- `makeMarkerDraggable(marker, onDragEnd, onDrag?)` — sets `marker.isDraggable = true` and wires an osmdroid `Marker.OnMarkerDragListener`. `onDragEnd` fires once per drop with the new `LatLng`; optional `onDrag` fires continuously for live feedback.
 
 ### Route
 ```kotlin
@@ -493,8 +503,8 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 
 | Issue | Fix |
 |-------|-----|
-| Circular route always uses 3 waypoints (equilateral triangle shape) | Add randomised bearing offsets for variety |
-| Detour waypoint is single perpendicular point | Add second waypoint for complex detour shapes |
+| ~~Circular route always uses 3 waypoints (equilateral triangle shape)~~ | **RESOLVED** — randomised rotation, 3–5 vertices, angular/radius jitter (`RouteVariety`) |
+| ~~Detour waypoint is single perpendicular point~~ | **RESOLVED** — two waypoints, randomised side/fractions for arc/curve shapes |
 | No restricted area filtering | Load OSM landuse/amenity tags |
 | No elevation support | Add elevation data source |
 | No offline tile cache | Pre-bundle or download tile layer |
@@ -509,4 +519,4 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 3. Never upgrade GraphHopper past 6.0 — see Dependencies constraint above.
 4. Never call `mapManager.clear()` after route display — use `mapManager.clearRoute()`.
 
-**Last Updated**: 2026-05-29 — UI redesign with high-contrast Material Design 2 color palette, improved visual hierarchy, and WCAG AAA accessibility compliance
+**Last Updated**: 2026-05-29 — Added route-shape variety (`RouteVariety` in `RouteService`: randomised circular polygons with 3–5 jittered vertices, two-waypoint asymmetric detours) and draggable start/end markers (`MapManager.makeMarkerDraggable()` + `MainActivity.onWaypointMoved()` auto-regeneration). Previous: UI redesign with high-contrast Material Design 2 palette and WCAG AAA accessibility.

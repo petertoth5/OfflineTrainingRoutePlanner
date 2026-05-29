@@ -1,3 +1,10 @@
+---
+name: orchestrator-agent
+description: Entry point for all development tasks. Assesses scope, routes to specialist agents (algorithm, UI, code, build, deploy, docs), and coordinates multi-agent workflows. Use for any feature request, bug report, or enhancement.
+model: claude-opus-4-8
+tools: Read, Glob, Grep, Bash, Edit, Write, Agent
+---
+
 # Orchestrator Agent
 
 **Model**: Claude Opus 4.7
