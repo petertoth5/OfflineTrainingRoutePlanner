@@ -369,7 +369,15 @@ Checks `DataManager.hasOsmData()`. If missing → region spinner + download butt
 **UI elements**:
 - `MaterialButtonToggleGroup`: **Running** (`foot`, 10000m default) / **Biking** (`bike`, 20000m default) — switching updates distance field
 - `seekBarMinTolerance` / `seekBarMaxTolerance`: route can be shorter/longer by this many meters (default 500m each)
-- **New Route** button: clears route polyline, both markers, resets all state to "Tap map to select start point"
+- **New Route** button: clears route polyline, ALL markers (start, end, mids), resets all state to "Tap map to select start point"
+- **Clear Mids** button (`btnClearWaypoints`): removes all intermediate waypoints, keeps start/end
+- `tvWaypoints`: live count of intermediate waypoints ("Waypoints: N")
+
+**Multi-waypoint support** (multiple stops in one route):
+- **Tap semantics (auto-append)**: 1st tap = START (label "S"), 2nd tap = END (label "E"), 3rd+ tap = appends a MID waypoint (labels "1", "2", …) inserted *before* END so routing order is auto-maintained as `[start] + mids + [end]`.
+- Markers carry **simple osmdroid text labels** via `Marker.setTextIcon(label)` (no custom drawables) — the pin is replaced by a text-rendered icon.
+- `MainActivity.midMarkers: MutableList<Marker>` holds the ordered mids. `orderedWaypoints()` builds the routing list from start + mids + end. Each mid marker is draggable (`attachMidMarkerDrag()`) and triggers `onWaypointMoved()` → auto-regeneration.
+- **Distance target is always kept.** If the mandatory through-path of the ordered waypoints already exceeds max tolerance, the route is still returned but the callback carries the warning *"Waypoint order incompatible with distance target — adjust waypoints and try again."*, surfaced in the status bar and a Toast.
 - **Export as GPX**: opens Android SAF file picker (`ACTION_CREATE_DOCUMENT`) — user browses and picks save location; written via `contentResolver.openOutputStream(uri)`
 - **Draggable markers**: start and end markers are draggable (`MapManager.makeMarkerDraggable()`). Drag-end updates the coordinate display via `attachStartMarkerDrag()` / `attachEndMarkerDrag()`. `onWaypointMoved()` then **regenerates the route automatically** if one is already displayed and the engine is ready; otherwise it prompts the user to tap Generate. Drag listeners are (re)attached every time a marker is created — on map tap, and on GPS auto-placement in `setStartPointToCurrentLocation()`.
 
@@ -384,6 +392,14 @@ Key fields: `selectedProfile: String`, `minTolerance: Int`, `maxTolerance: Int`,
 - Checks `gh_profiles` SharedPreference against fingerprint `"foot_bike_gh6_v1"` — if mismatch, wipes `cacheDir/gh/` and saves new fingerprint **before** importing (if saved after and process is killed mid-import, next launch sees mismatch → wipe → infinite restart loop)
 - Profiles: `foot` + `bike`, `weighting="fastest"`, `turnCosts=false`
 - First run / profile change: reimport takes **5–15 min** on device (one-time)
+
+**Entry point** (`generateRoute(...)`): two overloads.
+- `generateRoute(start, end, dist, …)` — legacy two-point / circular convenience overload, delegates to the list form.
+- `generateRoute(waypoints: List<LatLng>, dist, …)` — ordered `[start, mid…, end]`. Dispatches on size: 1 → circular, 2 → detour (`calculateRoute()`), 3+ → `calculateMultiWaypointRoute()`.
+
+**`normalizeWaypoints(List<LatLng>)`**: drops out-of-range coords and collapses consecutive duplicates (within 1m) so GH never sees a zero-length leg. Order is preserved exactly (UI guarantees mids precede end).
+
+**Multi-waypoint routing** (`calculateMultiWaypointRoute()`): routes through every user waypoint **in order** (mandatory through-points — never reordered or dropped). Baseline = straight through-path. If baseline > maxTolerance → return route + the "incompatible" warning. Otherwise injects one perpendicular bulge per leg (`bulgePoint()`), distributing the extra distance proportionally to each leg's length, and iterates with the same proportional-scaling loop (10 attempts) used for single-leg routes.
 
 **Routing algorithm** (`calculateRoute()`):
 Priority is route **length**, not shortest path. Generates intermediate GH waypoints and iterates with proportional scaling until the routed distance is within tolerance.
@@ -433,6 +449,7 @@ osmdroid wrapper. Accepts `LatLng`, converts to `GeoPoint` internally.
 - `clear()` — removes ALL overlays including `MapTouchOverlay` (use only on full reset)
 - `clearRoute()` — removes only `Polyline` overlays; safe to call after generating a route
 - `makeMarkerDraggable(marker, onDragEnd, onDrag?)` — sets `marker.isDraggable = true` and wires an osmdroid `Marker.OnMarkerDragListener`. `onDragEnd` fires once per drop with the new `LatLng`; optional `onDrag` fires continuously for live feedback.
+- `addMarker(latLng, title, label?)` — optional `label` renders a text icon via `Marker.setTextIcon(label)` (used for S / E / 1 / 2 … multi-waypoint labels).
 
 ### Route
 ```kotlin
@@ -519,4 +536,4 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 3. Never upgrade GraphHopper past 6.0 — see Dependencies constraint above.
 4. Never call `mapManager.clear()` after route display — use `mapManager.clearRoute()`.
 
-**Last Updated**: 2026-05-29 — Added route-shape variety (`RouteVariety` in `RouteService`: randomised circular polygons with 3–5 jittered vertices, two-waypoint asymmetric detours) and draggable start/end markers (`MapManager.makeMarkerDraggable()` + `MainActivity.onWaypointMoved()` auto-regeneration). Previous: UI redesign with high-contrast Material Design 2 palette and WCAG AAA accessibility.
+**Last Updated**: 2026-05-29 — Added **multi-waypoint support**: ordered `generateRoute(List<LatLng>)` + `normalizeWaypoints()` + `calculateMultiWaypointRoute()` (mandatory through-points with per-leg bulge injection to hit the distance target; warns when waypoint order overshoots tolerance). UI: auto-append tap semantics (S/E/1/2…), text-label markers (`MapManager.addMarker(label)` → `setTextIcon`), Clear Mids button + waypoint count. Previous: route-shape variety (`RouteVariety`) and draggable start/end markers with auto-regeneration; UI redesign with high-contrast Material Design 2 palette and WCAG AAA accessibility.

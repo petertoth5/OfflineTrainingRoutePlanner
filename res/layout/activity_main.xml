@@ -50,12 +50,13 @@
             </LinearLayout>
 
             <!-- GROUP 2: QUICK ACTIONS -->
+            <!-- Row 1: point-clearing actions (Clear Start, Clear End, Clear Waypoints) -->
             <LinearLayout
                 android:id="@+id/quickActionsContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginBottom="12dp">
+                android:layout_marginBottom="8dp">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnClearStart"
@@ -80,16 +81,27 @@
                     android:contentDescription="Clear the selected end point" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnNewRoute"
+                    android:id="@+id/btnClearWaypoints"
                     style="@style/Widget.Button.Outlined"
                     android:layout_width="0dp"
                     android:layout_height="48dp"
                     android:layout_weight="1"
-                    android:text="New Route"
+                    android:text="Clear Mids"
                     android:textSize="12sp"
-                    android:contentDescription="Clear all points and start a new route" />
+                    android:contentDescription="Clear all intermediate waypoints" />
 
             </LinearLayout>
+
+            <!-- Row 2: New Route (full width, clears everything) -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnNewRoute"
+                style="@style/Widget.Button.Outlined"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="New Route"
+                android:textSize="12sp"
+                android:layout_marginBottom="12dp"
+                android:contentDescription="Clear all points and start a new route" />
 
             <!-- GROUP 3: START/END POINT DISPLAY -->
             <LinearLayout
@@ -115,7 +127,17 @@
                     android:text="End: Not set"
                     android:textSize="12sp"
                     android:textColor="@color/secondary_text"
+                    android:layout_marginBottom="4dp"
                     android:contentDescription="Selected end point coordinates" />
+
+                <TextView
+                    android:id="@+id/tvWaypoints"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Waypoints: 0"
+                    android:textSize="12sp"
+                    android:textColor="@color/secondary_text"
+                    android:contentDescription="Number of intermediate waypoints. Tap the map after setting start and end to add more." />
 
             </LinearLayout>
 

@@ -98,6 +98,29 @@ class RouteService(private val context: Context) {
         maxToleranceMeters: Int = 500,
         callback: (Route?, String?) -> Unit
     ) {
+        // Backwards-compatible overload: two-point / circular routing.
+        generateRoute(listOf(startPoint, endPoint), distanceMeters, profile, minToleranceMeters, maxToleranceMeters, callback)
+    }
+
+    /**
+     * Multi-waypoint route generation. [waypoints] is an ordered list: [start, mid..., end].
+     * - 1 entry  → circular route around that point.
+     * - 2 entries → start→end detour route (existing behaviour).
+     * - 3+ entries → multi-leg route passing through every mid waypoint IN ORDER, with extra
+     *   detour sub-waypoints injected to reach the distance target.
+     *
+     * Per the product decision, the distance target is always kept. If the through-path of the
+     * user's ordered waypoints already exceeds the max tolerance, the route is still returned but
+     * the callback error carries a warning so the UI can surface it.
+     */
+    fun generateRoute(
+        waypoints: List<LatLng>,
+        distanceMeters: Double,
+        profile: String = "foot",
+        minToleranceMeters: Int = 500,
+        maxToleranceMeters: Int = 500,
+        callback: (Route?, String?) -> Unit
+    ) {
         scope.launch {
             try {
                 val gh = graphHopper
@@ -105,11 +128,26 @@ class RouteService(private val context: Context) {
                     return@launch callback(null, "Routing engine not ready.")
                 }
 
+                val normalized = normalizeWaypoints(waypoints)
+                if (normalized.isEmpty()) {
+                    return@launch callback(null, "No start point selected.")
+                }
+
                 val targetDistance = distanceMeters
                 val minDistance = targetDistance - minToleranceMeters
                 val maxDistance = targetDistance + maxToleranceMeters
 
-                val result = calculateRoute(startPoint, endPoint, targetDistance, minDistance, maxDistance, profile)
+                val result = when {
+                    normalized.size <= 1 -> {
+                        // Circular around the single start point (end == start).
+                        val p = normalized.first()
+                        calculateRoute(p, p, targetDistance, minDistance, maxDistance, profile)
+                    }
+                    normalized.size == 2 ->
+                        calculateRoute(normalized[0], normalized[1], targetDistance, minDistance, maxDistance, profile)
+                    else ->
+                        calculateMultiWaypointRoute(normalized, targetDistance, minDistance, maxDistance, profile)
+                }
 
                 withContext(Dispatchers.Main) {
                     if (result != null) {
@@ -123,6 +161,153 @@ class RouteService(private val context: Context) {
                 callback(null, "Error: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Normalizes a raw waypoint list into ordered routing order [start, mid..., end].
+     * Drops out-of-range coordinates. Order is preserved exactly as the caller supplied it
+     * (the UI guarantees mids are appended before the end on tap), so this is primarily a
+     * validation/sanitisation pass with a guard against duplicate consecutive points.
+     */
+    fun normalizeWaypoints(waypoints: List<LatLng>): List<LatLng> {
+        val valid = waypoints.filter {
+            it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0
+        }
+        if (valid.isEmpty()) return emptyList()
+        // Collapse consecutive duplicates (GH rejects zero-length legs).
+        val deduped = ArrayList<LatLng>(valid.size)
+        for (p in valid) {
+            val last = deduped.lastOrNull()
+            if (last == null || haversineDistance(last.latitude, last.longitude, p.latitude, p.longitude) > 1.0) {
+                deduped.add(p)
+            }
+        }
+        return deduped
+    }
+
+    /**
+     * Routes through every user waypoint in order, then injects detour sub-waypoints to reach the
+     * distance target. The user's waypoints are mandatory through-points and are never reordered or
+     * removed. Extra distance is distributed across the legs proportionally to each leg's length,
+     * applied as a perpendicular bulge mid-leg, and scaled iteratively toward the target.
+     */
+    private fun calculateMultiWaypointRoute(
+        ordered: List<LatLng>,
+        targetDistanceMeters: Double,
+        minDistanceMeters: Double,
+        maxDistanceMeters: Double,
+        profile: String
+    ): Pair<Route?, String?>? {
+        return try {
+            val gh = graphHopper ?: return Pair(null, "Routing engine not ready.")
+
+            // 1. Baseline: route straight through the ordered waypoints (no detours).
+            val baseResponse = routeViaGH(gh, ordered, profile)
+            if (baseResponse == null || baseResponse.hasErrors()) {
+                return Pair(null, "Could not route through the selected waypoints. Move them closer to roads.")
+            }
+            val basePath = baseResponse.best ?: return Pair(null, "No route found through waypoints.")
+            val baseDist = basePath.distance
+
+            // Per product decision: keep the target, but warn if the mandatory through-path already
+            // overshoots the tolerance — the route still proceeds as a direct multi-stop path.
+            if (baseDist > maxDistanceMeters) {
+                val route = Route(
+                    points = latLngFromGHPoints(basePath.points),
+                    distance = baseDist,
+                    hasLoops = detectLoops(basePath.points)
+                )
+                return Pair(route, "Waypoint order incompatible with distance target — adjust waypoints and try again.")
+            }
+
+            // If already within tolerance, done.
+            if (baseDist >= minDistanceMeters) {
+                val route = Route(
+                    points = latLngFromGHPoints(basePath.points),
+                    distance = baseDist,
+                    hasLoops = detectLoops(basePath.points)
+                )
+                return Pair(route, null)
+            }
+
+            // 2. Need to add distance. Inject one perpendicular bulge per leg, sized so the total
+            //    extra length ≈ (target - baseDist), distributed proportionally to leg length.
+            //    Iterate with proportional scaling like the single-leg path.
+            val legCount = ordered.size - 1
+            val sides = (0 until legCount).map { if (random.nextBoolean()) 1.0 else -1.0 }
+            val fracJitter = (0 until legCount).map { random.nextDouble(0.42, 0.58) }
+
+            var scale = 1.0
+            var bestRoute: Route? = null
+            var bestDelta = Double.MAX_VALUE
+
+            for (attempt in 0..9) {
+                val extraNeeded = (targetDistanceMeters - baseDist).coerceAtLeast(0.0) * scale
+                val augmented = ArrayList<LatLng>()
+                augmented.add(ordered.first())
+                for (i in 0 until legCount) {
+                    val a = ordered[i]
+                    val b = ordered[i + 1]
+                    val legLen = haversineDistance(a.latitude, a.longitude, b.latitude, b.longitude)
+                    val legExtra = if (baseDist > 1.0) extraNeeded * (legLen / baseDist) else extraNeeded / legCount
+                    // Perpendicular bulge h from right-triangle geometry: detour leg ≈ legLen + legExtra.
+                    val newLegLen = legLen + legExtra
+                    val half = newLegLen / 2.0
+                    val halfDirect = legLen / 2.0
+                    val h = if (half > halfDirect) sqrt(half * half - halfDirect * halfDirect) else legExtra * 0.4
+                    if (h > 1.0) {
+                        augmented.add(bulgePoint(a, b, fracJitter[i], h, sides[i]))
+                    }
+                    augmented.add(b)
+                }
+
+                val response = routeViaGH(gh, augmented, profile) ?: continue
+                if (response.hasErrors()) continue
+                val path = response.best ?: continue
+                val dist = path.distance
+                if (dist <= 0) continue
+
+                val delta = abs(dist - targetDistanceMeters)
+                if (delta < bestDelta) {
+                    bestDelta = delta
+                    bestRoute = Route(
+                        points = latLngFromGHPoints(path.points),
+                        distance = dist,
+                        hasLoops = detectLoops(path.points)
+                    )
+                }
+
+                if (dist in minDistanceMeters..maxDistanceMeters) return Pair(bestRoute, null)
+
+                scale *= targetDistanceMeters / dist
+            }
+
+            if (bestRoute != null) {
+                val got = bestRoute.distance.toInt()
+                val tgt = targetDistanceMeters.toInt()
+                Pair(bestRoute, "Best route found: ${got}m (target ${tgt}m). Widen tolerance or adjust waypoints.")
+            } else {
+                Pair(null, "Cannot generate route through the selected waypoints.")
+            }
+        } catch (e: OutOfMemoryError) {
+            Pair(null, "Out of memory: region data too large")
+        } catch (e: Exception) {
+            Pair(null, "Routing error: ${e.message}")
+        }
+    }
+
+    // Perpendicular bulge point at fraction [frac] along leg a→b, offset [h] meters to [side].
+    private fun bulgePoint(a: LatLng, b: LatLng, frac: Double, h: Double, side: Double): LatLng {
+        val dLat = b.latitude - a.latitude
+        val dLon = b.longitude - a.longitude
+        val len = sqrt(dLat * dLat + dLon * dLon)
+        val perpLat = (if (len > 1e-9) -dLon / len else 1.0) * side
+        val perpLon = (if (len > 1e-9) dLat / len else 0.0) * side
+        val baseLat = a.latitude + dLat * frac
+        val baseLon = a.longitude + dLon * frac
+        val latOffset = (h / 111000.0) * perpLat
+        val lonOffset = (h / (111000.0 * cos(Math.toRadians(baseLat)))) * perpLon
+        return LatLng(baseLat + latOffset, baseLon + lonOffset)
     }
 
     private fun calculateRoute(
