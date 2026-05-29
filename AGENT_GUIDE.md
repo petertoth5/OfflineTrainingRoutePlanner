@@ -4,6 +4,108 @@
 
 ---
 
+## Agent Ecosystem Overview
+
+This project uses a **7-agent + 5-skill ecosystem** to coordinate specialized development work. The ecosystem enables parallel development, clear specialization, and systematic workflow management across algorithm design, UI/UX, implementation, build systems, deployment, and documentation.
+
+**The 7 agents:**
+- **Orchestrator Agent** (Claude Opus 4.7) — Entry point; assesses user requests and routes work to specialists
+- **Algorithm Developer Agent** (Claude Sonnet 4.6) — Designs routing algorithms and waypoint generation logic
+- **UI Designer Agent** (Claude Sonnet 4.6) — Creates Android UI/UX specs and layout improvements
+- **Software Developer Agent** (Claude Opus 4.7) — Implements Kotlin code and integrates specifications
+- **Build/Integrator Agent** (Claude Haiku 4.5) — Manages Gradle builds, ProGuard rules, and release configuration
+- **Deploy Agent** (Claude Haiku 4.5) — Handles APK signing, device testing, and release verification
+- **Documentation Agent** (Claude Haiku 4.5) — Maintains AGENT_GUIDE.md and project documentation
+
+**The 5 supporting skills** reside in `.claude/skills/`:
+- **Kotlin Development** — Kotlin/Android patterns and best practices
+- **Android Build** — Gradle setup, ProGuard configuration, dependency management
+- **Algorithm Design** — Algorithm specification and complexity analysis
+- **Android UI Design** — Layout patterns, accessibility, Material Design 2
+- **Deployment Checklist** — APK signing, device testing, release procedures
+
+### Directory Structure
+
+```
+.claude/
+├── agents/                          # 7 agent definitions
+│   ├── orchestrator-agent.md
+│   ├── algorithm-developer-agent.md
+│   ├── ui-designer-agent.md
+│   ├── software-developer-agent.md
+│   ├── build-integrator-agent.md
+│   ├── deploy-agent.md
+│   └── documentation-agent.md
+│
+└── skills/                          # 5 skill definitions
+    ├── kotlin-development.md
+    ├── android-build.md
+    ├── algorithm-design.md
+    ├── android-ui-design.md
+    └── deployment-checklist.md
+
+docs/agents/                         # Agent ecosystem documentation
+├── README.md                        # Overview and quick reference
+├── orchestrator-workflow.md         # Detailed workflow diagrams and examples
+└── agent-capabilities.md            # Detailed capability matrix for each agent
+```
+
+For comprehensive documentation, see [`docs/agents/README.md`](docs/agents/README.md).
+
+### Invoking the Orchestrator
+
+**Entry point for all work**: Users should initiate tasks by speaking with the **Orchestrator Agent**, providing a clear description of:
+- What you want to accomplish (feature request, bug report, enhancement)
+- What's happening now vs. what should happen
+- Any device/region-specific context
+
+**Workflow overview:**
+```
+User Request
+    ↓
+[Orchestrator: Assess scope & Route]
+    ↓
+[Specialists: Algorithm Dev → UI Designer → Software Dev → Build → Deploy → Documentation]
+    ↓
+[Orchestrator: Gather feedback & iterate if needed]
+    ↓
+User receives completed work + updated documentation
+```
+
+**Typical flow for a complete feature:**
+1. **Algorithm Developer** designs the algorithm (if needed)
+2. **UI Designer** creates the layout specification (if needed)
+3. **Software Developer** implements Kotlin code and integrates changes
+4. **Build/Integrator** resolves any build issues and prepares release configuration
+5. **Deploy Agent** tests on device and prepares signed APK
+6. **Documentation Agent** updates AGENT_GUIDE.md and code comments
+
+**Not all steps are always needed.** A simple bug fix might be: Orchestrator → Software Dev → Documentation → done.
+
+For detailed workflow examples, see [`docs/agents/orchestrator-workflow.md`](docs/agents/orchestrator-workflow.md).
+
+### For Future Development
+
+**Extending the agent ecosystem:**
+
+1. **New agents** — Create a new agent definition in `.claude/agents/[agent-name]-agent.md` following the format of existing agents. Update the list above and in `docs/agents/README.md`.
+
+2. **New skills** — Create a new skill in `.claude/skills/[skill-name].md`. Reference it in this guide's skills list above.
+
+3. **Updating after changes** — After any development iteration:
+   - The **Documentation Agent** automatically updates AGENT_GUIDE.md
+   - Verify all agent definitions in `.claude/agents/` match implementation reality
+   - Keep this guide's "Last Updated" timestamp current
+
+4. **Maintaining consistency** — Always reference:
+   - `.claude/agents/` for individual agent responsibilities and trigger conditions
+   - `docs/agents/` for detailed workflow documentation
+   - `AGENT_GUIDE.md` (this file) as the single source of truth for the codebase
+
+5. **Adding constraints or rules** — New mandatory rules should be added to the **MANDATORY FOR ALL AGENTS** section at the end of this guide. Update agent definitions and `docs/agents/` accordingly.
+
+---
+
 ## Tech Stack
 
 | | |
@@ -265,4 +367,4 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 3. Never upgrade GraphHopper past 6.0 — see Dependencies constraint above.
 4. Never call `mapManager.clear()` after route display — use `mapManager.clearRoute()`.
 
-**Last Updated**: 2026-05-28
+**Last Updated**: 2026-05-29
