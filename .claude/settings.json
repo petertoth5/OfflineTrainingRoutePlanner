@@ -1,0 +1,86 @@
+{
+  "agents": [
+    {
+      "name": "orchestrator",
+      "path": ".claude/agents/orchestrator-agent.md",
+      "description": "Coordinates all agents, assesses tasks, routes workflow. Entry point for all development work.",
+      "model": "opus-4-7"
+    },
+    {
+      "name": "algorithm-developer",
+      "path": ".claude/agents/algorithm-developer-agent.md",
+      "description": "Designs efficient algorithms for waypoint strategies and route planning.",
+      "model": "sonnet-4-6"
+    },
+    {
+      "name": "ui-designer",
+      "path": ".claude/agents/ui-designer-agent.md",
+      "description": "Designs layouts, visual hierarchy, app icons with high contrast and minimalist approach.",
+      "model": "sonnet-4-6"
+    },
+    {
+      "name": "software-developer",
+      "path": ".claude/agents/software-developer-agent.md",
+      "description": "Implements features, fixes bugs, maintains Kotlin codebase. Executes algorithm and UI specs.",
+      "model": "opus-4-7"
+    },
+    {
+      "name": "build-integrator",
+      "path": ".claude/agents/build-integrator-agent.md",
+      "description": "Builds APKs, handles dependencies, resolves compile errors. Manages Gradle and GraphHopper 6.0.",
+      "model": "haiku-4-5"
+    },
+    {
+      "name": "deploy",
+      "path": ".claude/agents/deploy-agent.md",
+      "description": "Installs APKs to devices via ADB. Manages device detection and installation.",
+      "model": "haiku-4-5"
+    },
+    {
+      "name": "documentation",
+      "path": ".claude/agents/documentation-agent.md",
+      "description": "Keeps AGENT_GUIDE.md and project documentation up to date after iterations.",
+      "model": "haiku-4-5"
+    }
+  ],
+  "skills": [
+    {
+      "name": "kotlin-development",
+      "path": ".claude/skills/kotlin-development.md",
+      "description": "Kotlin conventions, Android best practices, GraphHopper API patterns, code review standards"
+    },
+    {
+      "name": "android-build",
+      "path": ".claude/skills/android-build.md",
+      "description": "Gradle build process, dependency management, ProGuard rules, debug vs release APK signing, GraphHopper 6.0 constraints"
+    },
+    {
+      "name": "algorithm-design",
+      "path": ".claude/skills/algorithm-design.md",
+      "description": "Algorithm specification format, complexity analysis, waypoint strategies, route planning optimization, testing approaches"
+    },
+    {
+      "name": "android-ui-design",
+      "path": ".claude/skills/android-ui-design.md",
+      "description": "Material Design principles, portrait orientation lock, responsive layouts, high contrast accessibility, app icon design"
+    },
+    {
+      "name": "deployment-checklist",
+      "path": ".claude/skills/deployment-checklist.md",
+      "description": "ADB setup and configuration, device detection, APK installation, emulator workflows, troubleshooting"
+    }
+  ],
+  "documentation": {
+    "agents_overview": "docs/agents/README.md",
+    "orchestrator_workflow": "docs/agents/orchestrator-workflow.md",
+    "agent_capabilities": "docs/agents/agent-capabilities.md",
+    "agent_guide": "AGENT_GUIDE.md"
+  },
+  "project": {
+    "name": "OfflineTrainingRoutePlanner",
+    "description": "Android app generating sports training routes using GraphHopper 6.0 offline routing engine",
+    "primaryLanguage": "kotlin",
+    "androidMinSdk": 24,
+    "graphHopperVersion": "6.0"
+  }
+}
