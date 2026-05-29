@@ -1,0 +1,34 @@
+I want to update the route planning. Requirements are:
+1. If the user hits the generate route button for even for the same setup (waypoints and distances) the plannig shall provide a different route. Do not provide the same route twice. u-se some kind of randomization.
+2. Avoid routes which goes to dead ends, where there is no route available and the user shall return on the same path to continue following the route.
+3. Avoid routes that require U-turns.
+
+Also would like to update the UI and the waypoint handling.
+1. User should be able to move the start and the end waypoints by dragging them. After a drag the routing algo shall replan the route automatically.
+
+The rest of the functionality shall be kept as it is. 
+
+Work on a new branch to keep the already tested functionality untouched till these will be tested.
+
+After finishing the modifications build the apk and deploy.
+
+
+I want to update the route planning and the UI. Requirements are:
+1. The user shall be able to add additional mid waypoints, not just the start and the end.
+2. Start and End waypoints shall have a dedicated sign to make them easy to identify. (Start - green, end - red)
+3. Mid waypoints shall have consective numbering. Numbering shall follow the order the user set them.
+4. The last mid waypint in the row shall be deletable just as the end and the start.
+5. If there are multiple mid waypoints always the last in the row shall be cleared if the clear mid waypoint button pressed.
+6. There shall be a mid waypoint clear button for this on the UI.
+7. All waypoints are moveable via dragging and triggers a replan of the route.
+8. If the end waypoint cleared and there is at least one mid waypoint the highest numbered mid waypoint shall become the end waypoint.
+9. Mid waypoint color shall be orange.
+10. If the start waypoint is cleared and there is at least one mid waypoint the lowest numbered one shall become the start waypoint.
+11. If the start waypoint is cleared and there is the end waypoint, the end waypoint shall become the start waypoint.
+12. Route planner shall plan the route throug all waypoints in the following order: START -> Mid waypoint #1 -> Mid waypoint #N -> End waypoint
+
+The rest of the functionality shall be kept as it is. 
+
+Work on a new branch to keep the already tested functionality untouched till these will be tested.
+
+After finishing the modifications build the apk and deploy.
