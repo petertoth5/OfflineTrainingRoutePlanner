@@ -1,0 +1,35 @@
+<resources>
+    <!-- Material Design 2 Button Styles -->
+    <style name="Widget.Button.Primary" parent="Widget.MaterialComponents.Button">
+        <item name="cornerRadius">4dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:insetBottom">6dp</item>
+        <item name="android:insetTop">6dp</item>
+        <item name="backgroundTint">@color/primary_blue</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+
+    <style name="Widget.Button.Outlined" parent="Widget.MaterialComponents.OutlinedButton">
+        <item name="strokeColor">@color/primary_blue</item>
+        <item name="strokeWidth">2dp</item>
+        <item name="android:textColor">@color/primary_blue</item>
+        <item name="android:textSize">14sp</item>
+        <item name="cornerRadius">4dp</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+
+    <!-- TextInputLayout styling -->
+    <style name="Widget.TextInputLayout" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <item name="boxBackgroundColor">@color/background_light</item>
+        <item name="android:textColorHint">@color/secondary_text</item>
+        <item name="boxStrokeColor">@color/primary_blue</item>
+    </style>
+
+    <!-- EditText styling -->
+    <style name="Widget.EditText" parent="Widget.AppCompat.EditText">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/primary_text</item>
+        <item name="android:textColorHint">@color/secondary_text</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+</resources>
