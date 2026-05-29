@@ -1,3 +1,10 @@
+---
+name: documentation-agent
+description: Updates AGENT_GUIDE.md and inline code comments after development changes to the OfflineTrainingRoutePlanner. Use after any code or algorithm change to keep documentation accurate.
+model: claude-haiku-4-5-20251001
+tools: Read, Glob, Grep, Edit, Write
+---
+
 # Documentation Agent
 
 **Model**: Claude Haiku 4.5

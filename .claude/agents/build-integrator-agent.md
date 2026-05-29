@@ -1,3 +1,10 @@
+---
+name: build-integrator-agent
+description: Builds APKs, resolves Gradle compile errors, manages ProGuard rules and dependencies for the OfflineTrainingRoutePlanner. Use when the build fails or release configuration needs changes.
+model: claude-haiku-4-5-20251001
+tools: Read, Glob, Grep, Edit, Write, Bash, PowerShell
+---
+
 # Build/Integrator Agent
 
 **Model**: Claude Haiku 4.5

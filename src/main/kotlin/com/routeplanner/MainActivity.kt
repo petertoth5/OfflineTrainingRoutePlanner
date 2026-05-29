@@ -166,9 +166,10 @@ class MainActivity : AppCompatActivity() {
                         startMarker?.let { mapManager.removeMarker(it) }
                         startMarker = mapManager.addMarker(latLng, "Start Point")
                         if (startMarker != null) {
+                            attachStartMarkerDrag()
                             binding.tvStartPoint.text = "Start: ${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
                             isSelectingStart = false
-                            binding.tvStatus.text = "Tap map to select end point (or skip)"
+                            binding.tvStatus.text = "Tap map to select end point (or skip). Drag a marker to fine-tune."
                         } else {
                             Toast.makeText(this, "Failed to place marker", Toast.LENGTH_SHORT).show()
                         }
@@ -176,8 +177,9 @@ class MainActivity : AppCompatActivity() {
                         endMarker?.let { mapManager.removeMarker(it) }
                         endMarker = mapManager.addMarker(latLng, "End Point")
                         if (endMarker != null) {
+                            attachEndMarkerDrag()
                             binding.tvEndPoint.text = "End: ${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
-                            binding.tvStatus.text = "Ready to generate route"
+                            binding.tvStatus.text = "Ready to generate route. Drag a marker to fine-tune."
                         } else {
                             Toast.makeText(this, "Failed to place marker", Toast.LENGTH_SHORT).show()
                         }
@@ -189,6 +191,31 @@ class MainActivity : AppCompatActivity() {
             binding.mapView.overlays.add(touchOverlay)
         } catch (e: Exception) {
             Toast.makeText(this, "Error setting up map: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun attachStartMarkerDrag() {
+        mapManager.makeMarkerDraggable(startMarker, onDragEnd = { latLng ->
+            binding.tvStartPoint.text = "Start: ${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
+            onWaypointMoved()
+        })
+    }
+
+    private fun attachEndMarkerDrag() {
+        mapManager.makeMarkerDraggable(endMarker, onDragEnd = { latLng ->
+            binding.tvEndPoint.text = "End: ${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
+            onWaypointMoved()
+        })
+    }
+
+    // Called after a start/end marker is dragged to a new position. If a route is already shown,
+    // regenerate it from the new points so the displayed route stays in sync with the markers.
+    private fun onWaypointMoved() {
+        if (currentRoute != null && binding.btnGenerate.isEnabled) {
+            binding.tvStatus.text = "Waypoint moved — regenerating route..."
+            generateRoute()
+        } else {
+            binding.tvStatus.text = "Waypoint moved. Tap Generate Route."
         }
     }
 
@@ -457,9 +484,10 @@ class MainActivity : AppCompatActivity() {
         if (userLocation != null) {
             startMarker?.let { mapManager.removeMarker(it) }
             startMarker = mapManager.addMarker(userLocation!!, "Start Point (Current Location)")
+            attachStartMarkerDrag()
             binding.tvStartPoint.text = "Start: ${String.format("%.4f", userLocation!!.latitude)}, ${String.format("%.4f", userLocation!!.longitude)}"
             isSelectingStart = false
-            binding.tvStatus.text = "Start point set to current location. Tap map to select end point (or skip)"
+            binding.tvStatus.text = "Start point set to current location. Tap map to select end point (or skip). Drag a marker to fine-tune."
         }
     }
 

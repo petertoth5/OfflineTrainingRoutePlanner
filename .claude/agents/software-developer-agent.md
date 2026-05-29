@@ -1,3 +1,10 @@
+---
+name: software-developer-agent
+description: Implements Kotlin code changes, bug fixes, and feature integration for the OfflineTrainingRoutePlanner. Use for all hands-on code implementation after algorithm or UI design is complete.
+model: claude-opus-4-8
+tools: Read, Glob, Grep, Edit, Write, Bash
+---
+
 # Software Developer Agent
 
 **Model**: Claude Opus 4.7

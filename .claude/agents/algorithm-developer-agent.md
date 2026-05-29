@@ -1,3 +1,10 @@
+---
+name: algorithm-developer-agent
+description: Designs and specifies routing algorithms, waypoint generation strategies, and route scaling logic for the OfflineTrainingRoutePlanner. Use when changing how routes are planned, waypoints are placed, or distances are calculated.
+model: claude-sonnet-4-6
+tools: Read, Glob, Grep, Edit, Write
+---
+
 # Algorithm Developer Agent
 
 **Model**: Claude Sonnet 4.6

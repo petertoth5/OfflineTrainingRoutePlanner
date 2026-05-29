@@ -1,3 +1,10 @@
+---
+name: deploy-agent
+description: Installs APKs to connected Android devices and verifies deployment for the OfflineTrainingRoutePlanner. Use when ready to test on device or prepare a release build.
+model: claude-haiku-4-5-20251001
+tools: Read, Glob, Grep, Bash, PowerShell
+---
+
 # Deploy Agent
 
 **Model**: Claude Haiku 4.5

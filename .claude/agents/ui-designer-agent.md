@@ -1,3 +1,10 @@
+---
+name: ui-designer-agent
+description: Designs Android UI/UX layouts and interaction specifications for the OfflineTrainingRoutePlanner. Use when changing map controls, buttons, markers, user interaction flows, or visual layout.
+model: claude-sonnet-4-6
+tools: Read, Glob, Grep, Edit, Write
+---
+
 # UI Designer Agent
 
 **Model**: Claude Sonnet 4.6
