@@ -33,6 +33,8 @@ class MainActivity : AppCompatActivity() {
     }
     private var startMarker: Marker? = null
     private var endMarker: Marker? = null
+    // Intermediate (mid) waypoints, in routing order between start and end.
+    private val midMarkers = mutableListOf<Marker>()
     private var isSelectingStart = true
     private lateinit var routeService: RouteService
     private var currentRoute: Route? = null
@@ -95,6 +97,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnNewRoute.setOnClickListener { newRoute() }
         binding.btnClearStart.setOnClickListener { clearStart() }
         binding.btnClearEnd.setOnClickListener { clearEnd() }
+        binding.btnClearWaypoints.setOnClickListener { clearWaypoints() }
         binding.btnExport.setOnClickListener { exportRoute() }
         binding.btnSettings.setOnClickListener { openSettings() }
     }
@@ -162,26 +165,43 @@ class MainActivity : AppCompatActivity() {
                         return@MapTouchOverlay
                     }
 
-                    if (isSelectingStart) {
-                        startMarker?.let { mapManager.removeMarker(it) }
-                        startMarker = mapManager.addMarker(latLng, "Start Point")
-                        if (startMarker != null) {
-                            attachStartMarkerDrag()
-                            binding.tvStartPoint.text = "Start: ${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
-                            isSelectingStart = false
-                            binding.tvStatus.text = "Tap map to select end point (or skip). Drag a marker to fine-tune."
-                        } else {
-                            Toast.makeText(this, "Failed to place marker", Toast.LENGTH_SHORT).show()
+                    // Tap semantics (auto-append):
+                    //  1st tap → START
+                    //  2nd tap → END
+                    //  3rd+ tap → append a MID waypoint (inserted before END; order auto-maintained)
+                    when {
+                        startMarker == null -> {
+                            startMarker = mapManager.addMarker(latLng, "Start Point", "S")
+                            if (startMarker != null) {
+                                attachStartMarkerDrag()
+                                binding.tvStartPoint.text = "Start: ${fmt(latLng)}"
+                                isSelectingStart = false
+                                binding.tvStatus.text = "Tap map to select end point (or skip). Drag a marker to fine-tune."
+                            } else {
+                                Toast.makeText(this, "Failed to place marker", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                    } else {
-                        endMarker?.let { mapManager.removeMarker(it) }
-                        endMarker = mapManager.addMarker(latLng, "End Point")
-                        if (endMarker != null) {
-                            attachEndMarkerDrag()
-                            binding.tvEndPoint.text = "End: ${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
-                            binding.tvStatus.text = "Ready to generate route. Drag a marker to fine-tune."
-                        } else {
-                            Toast.makeText(this, "Failed to place marker", Toast.LENGTH_SHORT).show()
+                        endMarker == null -> {
+                            endMarker = mapManager.addMarker(latLng, "End Point", "E")
+                            if (endMarker != null) {
+                                attachEndMarkerDrag()
+                                binding.tvEndPoint.text = "End: ${fmt(latLng)}"
+                                binding.tvStatus.text = "Ready to generate. Tap again to add waypoints. Drag a marker to fine-tune."
+                            } else {
+                                Toast.makeText(this, "Failed to place marker", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        else -> {
+                            val label = (midMarkers.size + 1).toString()
+                            val m = mapManager.addMarker(latLng, "Waypoint $label", label)
+                            if (m != null) {
+                                midMarkers.add(m)
+                                attachMidMarkerDrag(m)
+                                updateWaypointsDisplay()
+                                binding.tvStatus.text = "Waypoint $label added. Tap to add more, or Generate Route."
+                            } else {
+                                Toast.makeText(this, "Failed to place waypoint", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -194,18 +214,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun fmt(latLng: LatLng): String =
+        "${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
+
     private fun attachStartMarkerDrag() {
         mapManager.makeMarkerDraggable(startMarker, onDragEnd = { latLng ->
-            binding.tvStartPoint.text = "Start: ${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
+            binding.tvStartPoint.text = "Start: ${fmt(latLng)}"
             onWaypointMoved()
         })
     }
 
     private fun attachEndMarkerDrag() {
         mapManager.makeMarkerDraggable(endMarker, onDragEnd = { latLng ->
-            binding.tvEndPoint.text = "End: ${String.format("%.4f", latLng.latitude)}, ${String.format("%.4f", latLng.longitude)}"
+            binding.tvEndPoint.text = "End: ${fmt(latLng)}"
             onWaypointMoved()
         })
+    }
+
+    private fun attachMidMarkerDrag(marker: Marker) {
+        mapManager.makeMarkerDraggable(marker, onDragEnd = { onWaypointMoved() })
+    }
+
+    private fun updateWaypointsDisplay() {
+        binding.tvWaypoints.text = "Waypoints: ${midMarkers.size}"
+    }
+
+    // Builds the ordered routing list: [start] + mids (in tap order) + [end].
+    // If end is not set, the route is circular around start (handled by RouteService).
+    private fun orderedWaypoints(): List<LatLng> {
+        val list = mutableListOf<LatLng>()
+        startMarker?.position?.let { list.add(LatLng(it.latitude, it.longitude)) }
+        midMarkers.forEach { m -> m.position?.let { list.add(LatLng(it.latitude, it.longitude)) } }
+        endMarker?.position?.let { list.add(LatLng(it.latitude, it.longitude)) }
+        return list
     }
 
     // Called after a start/end marker is dragged to a new position. If a route is already shown,
@@ -221,15 +262,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun generateRoute() {
         try {
-            val startPos = startMarker?.position
-            if (startPos == null) {
+            if (startMarker?.position == null) {
                 Toast.makeText(this, "Please select start point", Toast.LENGTH_SHORT).show()
                 return
             }
-            val startPoint = LatLng(startPos.latitude, startPos.longitude)
 
-            val endPos = endMarker?.position
-            val endPoint = if (endPos != null) LatLng(endPos.latitude, endPos.longitude) else startPoint
+            // Ordered routing list: [start] + mids + [end] (end omitted = circular around start).
+            val waypoints = orderedWaypoints()
 
             val distanceText = binding.etDistance.text.toString().trim()
             if (distanceText.isEmpty()) {
@@ -251,13 +290,19 @@ class MainActivity : AppCompatActivity() {
             binding.tvStatus.text = "Generating route..."
             binding.btnGenerate.isEnabled = false
 
-            routeService.generateRoute(startPoint, endPoint, distance, selectedProfile, minTolerance, maxTolerance) { route, error ->
+            routeService.generateRoute(waypoints, distance, selectedProfile, minTolerance, maxTolerance) { route, error ->
                 runOnUiThread {
                     binding.btnGenerate.isEnabled = true
                     if (route != null) {
                         displayRoute(route)
-                        binding.tvStatus.text = "Route generated (${route.distance.toInt()} m). Ready to export."
                         binding.btnExport.isEnabled = true
+                        if (error != null) {
+                            // Route produced but with a warning (e.g. waypoint order vs. distance).
+                            binding.tvStatus.text = "Route generated (${route.distance.toInt()} m) — $error"
+                            Toast.makeText(this, error, Toast.LENGTH_LONG).show()
+                        } else {
+                            binding.tvStatus.text = "Route generated (${route.distance.toInt()} m). Ready to export."
+                        }
                     } else {
                         binding.tvStatus.text = "Failed to generate route"
                         val errorMsg = error ?: "Unknown error occurred"
@@ -282,6 +327,8 @@ class MainActivity : AppCompatActivity() {
     private fun newRoute() {
         startMarker?.let { mapManager.removeMarker(it) }
         endMarker?.let { mapManager.removeMarker(it) }
+        midMarkers.forEach { mapManager.removeMarker(it) }
+        midMarkers.clear()
         startMarker = null
         endMarker = null
         currentRoute = null
@@ -289,9 +336,21 @@ class MainActivity : AppCompatActivity() {
         isSelectingStart = true
         binding.tvStartPoint.text = "Start: Not set"
         binding.tvEndPoint.text = "End: Not set"
+        updateWaypointsDisplay()
         binding.tvRouteInfo.text = "Route info will appear here"
         binding.tvStatus.text = "Tap map to select start point"
         binding.btnExport.isEnabled = false
+    }
+
+    private fun clearWaypoints() {
+        if (midMarkers.isEmpty()) {
+            Toast.makeText(this, "No waypoints to clear", Toast.LENGTH_SHORT).show()
+            return
+        }
+        midMarkers.forEach { mapManager.removeMarker(it) }
+        midMarkers.clear()
+        updateWaypointsDisplay()
+        binding.tvStatus.text = "Waypoints cleared."
     }
 
     private fun exportRoute() {
@@ -483,9 +542,9 @@ class MainActivity : AppCompatActivity() {
     private fun setStartPointToCurrentLocation() {
         if (userLocation != null) {
             startMarker?.let { mapManager.removeMarker(it) }
-            startMarker = mapManager.addMarker(userLocation!!, "Start Point (Current Location)")
+            startMarker = mapManager.addMarker(userLocation!!, "Start Point (Current Location)", "S")
             attachStartMarkerDrag()
-            binding.tvStartPoint.text = "Start: ${String.format("%.4f", userLocation!!.latitude)}, ${String.format("%.4f", userLocation!!.longitude)}"
+            binding.tvStartPoint.text = "Start: ${fmt(userLocation!!)}"
             isSelectingStart = false
             binding.tvStatus.text = "Start point set to current location. Tap map to select end point (or skip). Drag a marker to fine-tune."
         }

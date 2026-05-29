@@ -22,7 +22,7 @@ class MapManager(private val context: Context, private val mapView: MapView) {
         }
     }
 
-    fun addMarker(latLng: LatLng, title: String): Marker? {
+    fun addMarker(latLng: LatLng, title: String, label: String? = null): Marker? {
         return try {
             if (latLng.latitude < -90 || latLng.latitude > 90 ||
                 latLng.longitude < -180 || latLng.longitude > 180) {
@@ -32,6 +32,16 @@ class MapManager(private val context: Context, private val mapView: MapView) {
             val marker = Marker(mapView)
             marker.position = GeoPoint(latLng.latitude, latLng.longitude)
             marker.title = title
+            // Simple osmdroid text label drawn next to the marker icon (S / E / 1 / 2 ...).
+            // Fast, no custom drawables — uses osmdroid's built-in text-label rendering.
+            if (label != null) {
+                try {
+                    marker.setTextIcon(label)
+                } catch (e: Exception) {
+                    // Older/newer osmdroid signature differences — fall back to title only.
+                    e.printStackTrace()
+                }
+            }
             mapView.overlays.add(marker)
             mapView.invalidate()
             marker
