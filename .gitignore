@@ -22,6 +22,9 @@ Thumbs.db
 # Claude local settings (machine-specific)
 .claude/settings.local.json
 
+# Claude worktrees (temporary isolated workspaces)
+.claude/worktrees/
+
 # Signing — never commit keystore or passwords
 *.jks
 *.keystore
