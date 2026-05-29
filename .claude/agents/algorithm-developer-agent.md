@@ -41,7 +41,7 @@ When the Orchestrator routes an algorithm task, the Algorithm Developer:
 - **Designs a solution** — Proposes changes to waypoint placement, scaling strategy, or constraints
 - **Validates against constraints** — Ensures the solution:
   - Works with GraphHopper 6.0 (no custom weighting, no Janino compilation)
-  - Respects Android performance limits (must import in < 15 min on device, <300–400MB peak RAM)
+  - Respects Android performance limits (OSM data import must complete in < 15 min on device, <300–400MB peak RAM)
   - Produces roads that exist in OSM (all waypoints must route via GH, no synthetic paths)
   - Maintains real bearing/heading data (for anti-backtracking penalty)
 - **Documents in pseudocode** — Outputs algorithm in pseudocode form, NOT Kotlin code
@@ -78,7 +78,7 @@ for attempt in 0..9:
     scale *= targetDist / route.distance   # proportional adjustment
 ```
 
-**Anti-backtracking**: Each waypoint segment has bearings calculated and passed to GH with `heading_penalty=300.0` to avoid U-turns.
+**Anti-backtracking**: Each waypoint segment has bearings calculated and passed to GH with `heading_penalty=300.0` to avoid U-turns. A bearing is a compass direction (0°=North, 90°=East, etc.) from one waypoint to the next, used to penalize heading changes >90° (which indicate U-turns). See section "Anti-Backtracking (Heading Penalty)" below for fallback logic.
 
 **Circular detection**: If start and end are <200m apart, treat as circular (generate intermediate waypoints, close loop).
 
@@ -91,7 +91,7 @@ for attempt in 0..9:
 **Design considerations**:
 - Number of waypoints: More waypoints = more complex shape but slower to route, fewer = faster but repetitive
 - Bearing variation: Should bearings be randomized per route? How much variance avoids looking "algorithmic"?
-- Radius calculation: Current uses `targetDist/(2π) × scale`. Is this geometrically sound? Can it overflow?
+- Radius calculation: Current uses `targetDist/(2π) × scale`. Is this geometrically sound? Can it overflow? (Note: This derives radius from the circumference formula C=2πr; given target distance ≈ circumference, radius ≈ target/(2π))
 - Placement: Are 120° intervals always best? Should placements adapt to start location?
 
 **Output for this component**: Pseudocode defining waypoint positions as (lat, lng) functions of center, target distance, and scale factor.
@@ -112,18 +112,42 @@ for attempt in 0..9:
 
 **Current**: Iterates up to 10 times, scaling by `scale *= targetDist / route.distance` each iteration. Stops when distance is in tolerance range.
 
+**Fallback Decision Tree** (when no route within tolerance after max iterations):
+```
+1. After 10 iterations, check if any result is within tolerance
+   ├─ IF converged (last route is within [minDist, maxDist]): Return that route
+   ├─ IF not converged:
+   │   ├─ Option A (Single Point): Fall back to a single-waypoint route
+   │   │   └─ Return the last calculated route (even if outside tolerance)
+   │   └─ Option B (Midpoint): Fall back to single midpoint between start/end
+   │       └─ Calculate midpoint waypoint and route; faster but less control
+   └─ Risk: User receives route that may not match requested distance (could be 20% off)
+```
+
 **Design considerations**:
 - Convergence: Is 10 iterations enough? Does the multiplicative scaling always converge?
 - Oscillation: Can scale bounce above/below target and never settle?
 - Precision: After scaling, how close to target is the final route guaranteed to be?
 - Performance: Each iteration = 1 GH routing call. Is 10 calls acceptable on Android?
-- Fallback: If after 10 iterations no route is within tolerance, what do we return?
+- Fallback: If after 10 iterations no route is within tolerance, what do we return? (Decision tree above clarifies options)
 
 **Output for this component**: Pseudocode for the scaling loop with convergence analysis and exit conditions.
 
 #### 4. Anti-Backtracking (Heading Penalty)
 
 **Current**: Calculate bearing from consecutive waypoint pairs, pass `setHeadings(bearings)` and `heading_penalty=300.0` to GH. Falls back to no-headings if GH rejects.
+
+**Fallback Decision Tree**:
+```
+1. Try routing with calculated bearings and heading_penalty=300.0
+   ├─ IF route found: Return route with headings applied
+   ├─ IF "no route found" error + headings are set:
+   │   └─ Falls back to single point: Retry with no headings (setHeadings = null)
+   │      ├─ IF route found: Return route (U-turns allowed, but route exists)
+   │      ├─ IF still no route: Fall back to straight-line segment (no waypoints)
+   │      └─ Risk: Without heading penalty, user may see sharp U-turns in the route
+   └─ IF other error (e.g., timeout): Propagate error to caller
+```
 
 **Design considerations**:
 - Penalty value: Is 300.0 optimal? Too low = headings ignored; too high = route impossible?
@@ -232,10 +256,23 @@ function generateCircularWaypoints(center, targetDist, scale, randomSeed):
     baseAngle = random.uniform(0, 360)
     
     waypoints = []
+    earthRadiusM = 6371000  // Earth radius in meters
+    
     for i in 0..2:
         angle = baseAngle + (i × 120) + random.gaussian(mean=0, stddev=15)  // ±15° variance
         bearing = angle % 360
-        lat, lng = center + (radius × cos(bearing°), radius × sin(bearing°))
+        
+        // Convert compass bearing (in degrees) and radius to lat/lng projection
+        // bearing: 0°=North, 90°=East (compass direction)
+        bearingRad = bearing × (π / 180)  // Convert to radians
+        
+        // Project radius onto Cartesian plane using bearing, then convert back to lat/lng
+        deltaLat = (radius × cos(bearingRad)) / earthRadiusM  // Distance in radians (latitude)
+        deltaLng = (radius × sin(bearingRad)) / (earthRadiusM × cos(center.lat × π / 180))  // Adjust for latitude
+        
+        lat = center.lat + (deltaLat × 180 / π)
+        lng = center.lng + (deltaLng × 180 / π)
+        
         waypoints.append((lat, lng, bearing))
     
     return waypoints
