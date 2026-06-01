@@ -171,7 +171,7 @@ class MainActivity : AppCompatActivity() {
                     //  3rd+ tap → append a MID waypoint (inserted before END; order auto-maintained)
                     when {
                         startMarker == null -> {
-                            startMarker = mapManager.addMarker(latLng, "Start Point", "S")
+                            startMarker = mapManager.addMarker(latLng, "Start Point", "S", R.color.start_point_red)
                             if (startMarker != null) {
                                 attachStartMarkerDrag()
                                 binding.tvStartPoint.text = "Start: ${fmt(latLng)}"
@@ -182,7 +182,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                         endMarker == null -> {
-                            endMarker = mapManager.addMarker(latLng, "End Point", "E")
+                            endMarker = mapManager.addMarker(latLng, "End Point", "E", R.color.end_point_green)
                             if (endMarker != null) {
                                 attachEndMarkerDrag()
                                 binding.tvEndPoint.text = "End: ${fmt(latLng)}"
@@ -193,7 +193,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         else -> {
                             val label = (midMarkers.size + 1).toString()
-                            val m = mapManager.addMarker(latLng, "Waypoint $label", label)
+                            val m = mapManager.addMarker(latLng, "Waypoint $label", label, R.color.midpoint_yellow)
                             if (m != null) {
                                 midMarkers.add(m)
                                 attachMidMarkerDrag(m)
@@ -542,7 +542,7 @@ class MainActivity : AppCompatActivity() {
     private fun setStartPointToCurrentLocation() {
         if (userLocation != null) {
             startMarker?.let { mapManager.removeMarker(it) }
-            startMarker = mapManager.addMarker(userLocation!!, "Start Point (Current Location)", "S")
+            startMarker = mapManager.addMarker(userLocation!!, "Start Point (Current Location)", "S", R.color.start_point_red)
             attachStartMarkerDrag()
             binding.tvStartPoint.text = "Start: ${fmt(userLocation!!)}"
             isSelectingStart = false
