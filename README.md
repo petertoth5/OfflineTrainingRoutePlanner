@@ -76,14 +76,18 @@ Or manually via GitHub web UI:
 ## Features
 
 - Tap map to select start/end points (osmdroid, no API key)
+- Multi-waypoint support: tap to add intermediate waypoints in order
+- Colored waypoint markers (red start, green end, yellow mids) with improved visibility
+- Draggable markers with automatic route regeneration on move
+- Route variety: randomized shapes (not fixed equilateral triangles)
 - 14 European regions to choose from (Hungary default)
-- Specify distance in km
-- Auto-generates route avoiding highways
+- Running and Biking profiles with different default distances
+- Specify distance in meters with ±500m tolerance adjustment
+- Auto-generates route through all selected waypoints
 - Loop detection
-- ±500m distance tolerance
-- GPX export to Downloads folder
-- Delete OSM data
-- Change region anytime
+- GPX export via Android file picker (user chooses save location)
+- Delete OSM data and change regions anytime
+- High-contrast Material Design 2 interface with WCAG AAA accessibility
 
 ## Limitations
 
