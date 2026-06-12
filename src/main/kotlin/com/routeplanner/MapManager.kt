@@ -1,6 +1,7 @@
 package com.routeplanner
 
 import android.content.Context
+import android.graphics.drawable.BitmapDrawable
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.views.MapView
@@ -11,6 +12,7 @@ import com.google.android.gms.maps.model.LatLng
 import android.graphics.Color
 
 class MapManager(private val context: Context, private val mapView: MapView) {
+    private val markerIconGen = MarkerIconGenerator(context)
 
     init {
         try {
@@ -22,7 +24,12 @@ class MapManager(private val context: Context, private val mapView: MapView) {
         }
     }
 
-    fun addMarker(latLng: LatLng, title: String, label: String? = null): Marker? {
+    fun addMarker(
+        latLng: LatLng,
+        title: String,
+        label: String? = null,
+        colorResId: Int? = null
+    ): Marker? {
         return try {
             if (latLng.latitude < -90 || latLng.latitude > 90 ||
                 latLng.longitude < -180 || latLng.longitude > 180) {
@@ -32,13 +39,24 @@ class MapManager(private val context: Context, private val mapView: MapView) {
             val marker = Marker(mapView)
             marker.position = GeoPoint(latLng.latitude, latLng.longitude)
             marker.title = title
-            // Simple osmdroid text label drawn next to the marker icon (S / E / 1 / 2 ...).
-            // Fast, no custom drawables — uses osmdroid's built-in text-label rendering.
-            if (label != null) {
+
+            if (label != null && colorResId != null) {
+                try {
+                    val bitmap = markerIconGen.generateCircleMarkerIcon(colorResId, label)
+                    val drawable = BitmapDrawable(context.resources, bitmap)
+                    marker.icon = drawable
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    try {
+                        marker.setTextIcon(label)
+                    } catch (e2: Exception) {
+                        e2.printStackTrace()
+                    }
+                }
+            } else if (label != null) {
                 try {
                     marker.setTextIcon(label)
                 } catch (e: Exception) {
-                    // Older/newer osmdroid signature differences — fall back to title only.
                     e.printStackTrace()
                 }
             }

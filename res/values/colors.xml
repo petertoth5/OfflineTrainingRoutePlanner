@@ -14,8 +14,9 @@
     <color name="focus_border">#0D47A1</color>
 
     <!-- Map Markers -->
-    <color name="start_point_green">#4CAF50</color>
-    <color name="end_point_red">#F44336</color>
+    <color name="start_point_red">#D32F2F</color>
+    <color name="end_point_green">#388E3C</color>
+    <color name="midpoint_yellow">#FBC02D</color>
     <color name="waypoint_blue">#2196F3</color>
 
     <!-- Deprecated colors (keep for compatibility) -->

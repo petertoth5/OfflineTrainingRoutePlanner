@@ -139,10 +139,11 @@ The app uses a **high-contrast Material Design 2 color scheme** meeting WCAG AAA
 - Warning: `#E65100` (orange, 5.2:1 on white)
 - Disabled: `#BDBDBD` (gray, 3.5:1 on white — valid for disabled/large text)
 
-**Map Markers:**
-- Start point: `#4CAF50` (green)
-- End point: `#F44336` (red)
-- Waypoint: `#2196F3` (blue)
+**Map Markers** (high-visibility colored circles with white borders):
+- Start point: `#D32F2F` (red) — label "S"
+- End point: `#388E3C` (green) — label "E"
+- Mid waypoints: `#FBC02D` (yellow) — labels "1", "2", "3", … (auto-incrementing)
+- All markers: white 3px border + white text for high contrast on maps
 
 All colors defined in `res/values/colors.xml` for consistent usage across the app.
 
@@ -242,10 +243,13 @@ Colors coordinated with main activity for visual continuity.
 ### App Icon Design
 
 The app icon uses Android's Adaptive Icon format (API 26+):
-- **Foreground:** Stylized map pin/route waypoint in primary blue (#1565C0)
+- **Foreground:** Composite design showing:
+  - **Running figure** (left) — white stick figure in mid-stride on primary blue background
+  - **Route path** (right) — curved path with start (red), mid waypoint (yellow), and end (green) markers
 - **Background:** Solid primary blue (#1565C0)
 - **Monochrome:** Grayscale version for system-managed tinting
 - **Safe zone:** 81dp within 108dp canvas
+- **Design intent:** Visually represents both "running" activity and "route planning" function
 
 Fallback PNG icon (192×192) provided for API 24-25 devices with same visual design.
 
@@ -265,14 +269,15 @@ All changes are in `res/` (layouts, colors, styles) and `res/mipmap/` (icons). *
 
 ```
 src/main/kotlin/com/routeplanner/
-├── MainActivity.kt       # Main UI, map, route generation, GPX export
-├── SplashActivity.kt     # First launch, region select, OSM download
-├── RouteService.kt       # GraphHopper engine, route gen
-├── DataManager.kt        # OSM download/storage/deletion, SharedPreferences
-├── RegionManager.kt      # 14 European regions with Geofabrik URLs
-├── MapManager.kt         # osmdroid wrapper: markers, polylines, zoom
-├── MapTouchOverlay.kt    # Tap → lat/lng callback via osmdroid Overlay
-└── Route.kt              # Data class: points, distance, hasLoops, toGpx()
+├── MainActivity.kt           # Main UI, map, route generation, GPX export
+├── SplashActivity.kt         # First launch, region select, OSM download
+├── RouteService.kt           # GraphHopper engine, route gen
+├── DataManager.kt            # OSM download/storage/deletion, SharedPreferences
+├── RegionManager.kt          # 14 European regions with Geofabrik URLs
+├── MapManager.kt             # osmdroid wrapper: markers, polylines, zoom
+├── MapTouchOverlay.kt        # Tap → lat/lng callback via osmdroid Overlay
+├── MarkerIconGenerator.kt    # Runtime marker icon bitmap generation (colored circles)
+└── Route.kt                  # Data class: points, distance, hasLoops, toGpx()
 res/
 ├── layout/activity_main.xml     # Map + profile toggle + controls
 ├── layout/activity_splash.xml   # Region spinner + download progress
@@ -449,7 +454,7 @@ osmdroid wrapper. Accepts `LatLng`, converts to `GeoPoint` internally.
 - `clear()` — removes ALL overlays including `MapTouchOverlay` (use only on full reset)
 - `clearRoute()` — removes only `Polyline` overlays; safe to call after generating a route
 - `makeMarkerDraggable(marker, onDragEnd, onDrag?)` — sets `marker.isDraggable = true` and wires an osmdroid `Marker.OnMarkerDragListener`. `onDragEnd` fires once per drop with the new `LatLng`; optional `onDrag` fires continuously for live feedback.
-- `addMarker(latLng, title, label?)` — optional `label` renders a text icon via `Marker.setTextIcon(label)` (used for S / E / 1 / 2 … multi-waypoint labels).
+- `addMarker(latLng, title, label?, colorResId?)` — creates a colored marker icon. If `colorResId` provided, generates a high-visibility circle icon (red/green/yellow) with label text via `MarkerIconGenerator`. Otherwise falls back to osmdroid text-only icon or plain marker. Used for S / E / 1 / 2 … multi-waypoint labels.
 
 ### Route
 ```kotlin
@@ -536,4 +541,6 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 3. Never upgrade GraphHopper past 6.0 — see Dependencies constraint above.
 4. Never call `mapManager.clear()` after route display — use `mapManager.clearRoute()`.
 
-**Last Updated**: 2026-05-29 — Added **multi-waypoint support**: ordered `generateRoute(List<LatLng>)` + `normalizeWaypoints()` + `calculateMultiWaypointRoute()` (mandatory through-points with per-leg bulge injection to hit the distance target; warns when waypoint order overshoots tolerance). UI: auto-append tap semantics (S/E/1/2…), text-label markers (`MapManager.addMarker(label)` → `setTextIcon`), Clear Mids button + waypoint count. Previous: route-shape variety (`RouteVariety`) and draggable start/end markers with auto-regeneration; UI redesign with high-contrast Material Design 2 palette and WCAG AAA accessibility.
+**Last Updated**: 2026-06-12 — Feature complete: colored waypoint markers with multi-waypoint routing. Implementation verified: `MarkerIconGenerator.generateCircleMarkerIcon()` creates colored circle icons (red start, green end, yellow mids) with white 3px borders and text labels. `MapManager.addMarker(latLng, title, label?, colorResId?)` accepts optional color parameter. MainActivity correctly displays waypoint count, supports multi-waypoint tap semantics (1st→S, 2nd→E, 3rd+→1/2/3), clear waypoints button, and draggable markers with auto-regeneration. RouteService supports multi-waypoint routing with proportional distance distribution and through-path constraints. All marker colors defined in res/values/colors.xml and Material Design palette complete. Feature branch ready for merge to main.
+
+Previous (2026-05-29): **multi-waypoint support**: ordered `generateRoute(List<LatLng>)` + `normalizeWaypoints()` + `calculateMultiWaypointRoute()` (mandatory through-points with per-leg bulge injection to hit the distance target; warns when waypoint order overshoots tolerance). UI: auto-append tap semantics (S/E/1/2…), text-label markers, Clear Mids button + waypoint count. Earlier: route-shape variety (`RouteVariety`) and draggable start/end markers with auto-regeneration; UI redesign with high-contrast Material Design 2 palette and WCAG AAA accessibility.
