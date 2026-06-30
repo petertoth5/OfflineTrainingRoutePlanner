@@ -36,7 +36,7 @@
 - `res/mipmap-anydpi-v26/ic_launcher*.xml` — Icon references updated
 - `AGENT_GUIDE.md` — Status updated (test verified, ready for production)
 
-**Build Status**: ✓ Compiles clean (11.0 MB APK)
+**Build Status**: ✓ Compiles clean (11.0 MB APK, not committed to git)
 
 **Known Limitations** (unchanged, same as before):
 - No restricted area filtering (OSM landuse/amenity tags)
@@ -166,6 +166,10 @@ Based on known limitations and user feedback, consider:
    - Implementation: Server-side storage (optional) or client-side QR encoding
 
 ---
+
+## Git & Build Artifacts
+
+**APKs are NOT committed** (see `.gitignore` line 3: `*.apk`). Only source code, resources, and config files are in git. Build artifacts are regenerated via gradle.
 
 ## Quick Reference Commands
 
