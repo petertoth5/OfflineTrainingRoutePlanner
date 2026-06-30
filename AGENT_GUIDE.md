@@ -407,31 +407,57 @@ Key fields: `selectedProfile: String`, `minTolerance: Int`, `maxTolerance: Int`,
 **Multi-waypoint routing** (`calculateMultiWaypointRoute()`): routes through every user waypoint **in order** (mandatory through-points — never reordered or dropped). Baseline = straight through-path. If baseline > maxTolerance → return route + the "incompatible" warning. Otherwise injects one perpendicular bulge per leg (`bulgePoint()`), distributing the extra distance proportionally to each leg's length, and iterates with the same proportional-scaling loop (10 attempts) used for single-leg routes.
 
 **Routing algorithm** (`calculateRoute()`):
-Priority is route **length**, not shortest path. Generates intermediate GH waypoints and iterates with proportional scaling until the routed distance is within tolerance.
+Priority is route **length**, not shortest path. Generates intermediate GH waypoints and iterates with proportional scaling until the routed distance is within tolerance. An **anti-parallel scorer** then guides selection so the chosen route avoids out-and-back overlaps.
 
 ```
-isCircular = haversine(start, end) < 200m
+isCircular  = haversine(start, end) < 200m
+isLoopMode  = !isCircular && haversine(start,end) < targetDist × 0.35
 
 variety = RouteVariety(...)   # randomised ONCE per generateRoute() call (see below)
 
 for attempt in 0..9:
-    waypoints = if isCircular:
-        generateCircularWaypoints(center, targetDist, scale, variety)
-        # N waypoints (N = 3..5) evenly spaced, randomly rotated, with per-vertex
-        # angular jitter (±0.20 rad) and radius jitter (×0.80..1.20).
-        # base radius = targetDist/(2π) × scale
-    else:
-        generateDetourWaypoints(start, end, targetDist, directDist, scale, variety)
-        # 2 waypoints at randomised fractions (≈0.28..0.40 and ≈0.60..0.72) along A→B,
-        # offset to a randomly chosen side with asymmetric factors → arc/curve shapes.
-        # base offset h = sqrt((target/2)²-(direct/2)²) × scale
+    waypoints = selectWaypointStrategy(...):
+        isCircular → generateCircularWaypoints(center, targetDist, scale, variety)
+            # N waypoints (N = 4..5) evenly spaced, randomly rotated, per-vertex angular
+            # jitter (±0.15 rad) + radius jitter (×0.80..1.20), MIN angular separation
+            # (~84°) enforced via enforceAngularSpread(). base radius = targetDist/(2π) × scale
+        isLoopMode → generateCircularWaypointsForLoop(midpoint, start, end, …)
+            # loop of vertices around the start↔end midpoint, first vertex thrown
+            # PERPENDICULAR to the start→end bearing (close points would otherwise double back)
+        else → generateDetourWaypoints(start, end, targetDist, directDist, scale, variety)
+            # 2 waypoints at fractions (≈0.12..0.25 and ≈0.75..0.88) along A→B — deviate
+            # early / return late so out & in legs separate. base offset h = sqrt(...) × scale
 
-    route = routeViaGH([start] + waypoints + [end], profile)
-    if route.distance in [minDist, maxDist]: return route
-    scale *= targetDist / route.distance   # proportional adjustment
+    (response, headingApplied) = routeViaGHWithHeadingFlag([start]+waypoints+[end], profile)
+    if dist in [minDist, maxDist]:
+        antiParallel  = computeAntiParallelFraction(routePoints, dist)   # algorithm A, 0..1
+        selfFrac      = computeSelfIntersectionFraction(routePoints, dist) # algorithm F, 0..1
+        backtrackFrac = computeBacktrackingFraction(routePoints)         # algorithm G, 0..1
+        composite = antiParallel + backtrackFrac×0.5 + (if !headingApplied) 0.15
+        # Early-return: genuinely clean route
+        if selfFrac == 0 AND backtrackFrac ≤ 0.05 AND antiParallel ≤ 0.15 AND headingApplied:
+            return route
+        if selfFrac == 0: track Category A (clean)   by lowest composite
+        else:             track Category B (crossed)  by lowest composite
+    else:
+        track Category C (out-of-tolerance) by |dist − target|
+    scale *= targetDist / dist                     # proportional adjustment
+
+return Category A   (soft warning if antiParallel > 0.30 or backtrack > 0.10)
+     ?? Category B   ("crosses itself" warning)
+     ?? Category C   ("best found" message)
 ```
 
 All waypoints are real GH routing calls → all segments follow actual roads.
+
+**Three shape scorers** (post-route, all `internal` for testability):
+- **Anti-parallel** (`computeAntiParallelFraction`, algorithm A): O(m²) overlap. Down-samples to ≤200 pts, flags segment pairs ≥5 apart whose midpoints are within 80m AND bearings are (anti-)parallel within 25°. >0.30 reject-worthy, ≤0.15 good.
+- **Self-intersection** (`computeSelfIntersectionFraction`, algorithm F): geometric crossings (CCW `segmentsIntersect`) plus near-crossings — segment pairs ≥`MIN_SI_SKIP`(5) apart whose midpoints are within `SELF_INTERSECT_THRESHOLD_M`(100m) at a **non-parallel** angle. Down-samples to ≤200 pts. Returns fraction of crossing length.
+- **Backtracking** (`computeBacktrackingFraction`, algorithm G): scans the **full** polyline (no down-sampling) for consecutive-segment bearing reversals > `BACKTRACK_BEARING_THRESHOLD_DEG`(150°); the returning segment's length counts. A clean U-turn ≈ 0.50.
+
+**Helpers**: `angularDifference(b1,b2)` normalizes a bearing difference to [0°,180°]; `segmentsIntersect(a,b,c,d: LatLng)` is a LatLng overload of the CCW test; `reflectAcrossLine(point,lineA,lineB)` reflects a point across a line (planar lat/lon) for algorithm I-C. `enforceAngularSpread(angles, minSep)` pushes circular vertices apart to a minimum separation (capped at 2π/n, even-spacing fallback) while preserving input index order. Tunable constants live in the `RouteService` companion object.
+
+**Waypoint placement refinement (algorithm I)**: `generateCircularWaypoints` / `generateCircularWaypointsForLoop` now sort (angle, radiusJitter) pairs by angle **after** `enforceAngularSpread()` so vertices are visited in ascending angular order (prevents a self-crossing visit order). `generateDetourWaypoints` adds a convergence guard: if segment WP1→WP2 crosses the start→end baseline (a bowtie quadrilateral), WP2 is reflected to the opposite side via `reflectAcrossLine()`.
 
 **Route variety (`RouteVariety`)**: The shape parameters (rotation, vertex count, jitter, detour side/fractions) are chosen **once per `generateRoute()` call** and held constant across the 10 scaling attempts. This is intentional — re-randomising the geometry inside the loop would change the shape every attempt and prevent the routed distance from converging on the target. Consequence: each press of Generate Route (or each waypoint drag that triggers regeneration) yields a different but internally consistent shape, replacing the old fixed equilateral-triangle / single-perpendicular-point behaviour. Randomness source is `kotlin.random.Random.Default` (NOT `java.util.Random`, which lacks the ranged `nextDouble(from, until)` / `nextInt(from, until)` overloads).
 
@@ -525,8 +551,10 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 
 | Issue | Fix |
 |-------|-----|
-| ~~Circular route always uses 3 waypoints (equilateral triangle shape)~~ | **RESOLVED** — randomised rotation, 3–5 vertices, angular/radius jitter (`RouteVariety`) |
+| ~~Circular route always uses 3 waypoints (equilateral triangle shape)~~ | **RESOLVED** — randomised rotation, 4–5 vertices (min raised from 3), angular/radius jitter + enforced min angular separation (`RouteVariety` / `enforceAngularSpread`) |
 | ~~Detour waypoint is single perpendicular point~~ | **RESOLVED** — two waypoints, randomised side/fractions for arc/curve shapes |
+| ~~Routes double back / run parallel to themselves~~ | **RESOLVED** — anti-parallel scorer drives multi-objective selection, reformed detour fractions, near-circular loop mode for close start/end (`computeAntiParallelFraction`, algorithms A–E) |
+| ~~Routes cross/knot themselves or do sharp U-turns; circular/detour waypoints in self-crossing order~~ | **RESOLVED** — self-intersection scorer (F) + backtracking scorer (G) feed three-category selection (H); angular-sorted circular vertices + detour bowtie reflection (I) (`computeSelfIntersectionFraction`, `computeBacktrackingFraction`, `reflectAcrossLine`, algorithms F–I) |
 | No restricted area filtering | Load OSM landuse/amenity tags |
 | No elevation support | Add elevation data source |
 | No offline tile cache | Pre-bundle or download tile layer |
@@ -541,6 +569,10 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 3. Never upgrade GraphHopper past 6.0 — see Dependencies constraint above.
 4. Never call `mapManager.clear()` after route display — use `mapManager.clearRoute()`.
 
-**Last Updated**: 2026-06-12 — Feature complete: colored waypoint markers with multi-waypoint routing. Implementation verified: `MarkerIconGenerator.generateCircleMarkerIcon()` creates colored circle icons (red start, green end, yellow mids) with white 3px borders and text labels. `MapManager.addMarker(latLng, title, label?, colorResId?)` accepts optional color parameter. MainActivity correctly displays waypoint count, supports multi-waypoint tap semantics (1st→S, 2nd→E, 3rd+→1/2/3), clear waypoints button, and draggable markers with auto-regeneration. RouteService supports multi-waypoint routing with proportional distance distribution and through-path constraints. All marker colors defined in res/values/colors.xml and Material Design palette complete. Feature branch ready for merge to main.
+**Last Updated**: 2026-06-30 — Refined route planning (algorithms F–I) **TESTED & VERIFIED** on Samsung Galaxy S24+ (Android 16). No self-intersections, no U-turns, stable geometry, early-return optimization confirmed. New `internal` functions: `computeSelfIntersectionFraction()` (algorithm F — CCW crossings + non-parallel near-crossings, O(m²), down-sampled), `computeBacktrackingFraction()` (algorithm G — full-polyline >150° bearing-reversal scan), `reflectAcrossLine()` (algorithm I-C helper). New private helpers: `angularDifference()` (bearing diff → [0°,180°], now also backs `bearingsParallel`), `segmentsIntersect(a,b,c,d: LatLng)` overload of the CCW test. `calculateRoute()` scaling loop replaced two-stage selection with **three-category** tracking (A clean / B crossed / C out-of-tolerance); composite score = antiParallel + backtrack×0.5 + (no-heading ? 0.15); early-return gate tightened to selfFrac==0 AND backtrack≤0.05 AND antiParallel≤0.15 AND headingApplied. `generateCircularWaypoints()` & `generateCircularWaypointsForLoop()` now sort (angle, radiusJitter) by angle after `enforceAngularSpread()` (algorithm I-A/I-B). `generateDetourWaypoints()` adds a bowtie convergence guard reflecting WP2 across the baseline (algorithm I-C). New companion constants: `SELF_INTERSECT_THRESHOLD_M`(100), `MIN_SI_SKIP`(5), `BACKTRACK_BEARING_THRESHOLD_DEG`(150), `BACKTRACK_FRACTION_STRICT`(0.05), `BACKTRACK_FRACTION_ACCEPTABLE`(0.10), `BACKTRACK_COMPOSITE_WEIGHT`(0.5). No `profileFingerprint` bump (geometry/selection only, profiles unchanged). App icon redesigned: Samsung OneUI style with geometric route ring, runner silhouette, colored waypoint dots. Builds clean (`compileDebugKotlin` BUILD SUCCESSFUL). Device testing: ✓ Circular routes (no self-crossing, 4+ waypoints, symmetric), ✓ Detour routes (no U-turns, smooth arcs), ✓ Loop mode (perpendicular bulge, early-return < 3s), ✓ Stability (identical routes on repeated generation). Ready for merge to main.
+
+Previous: 2026-06-30 — Anti-parallel route planning (algorithms A–E) implemented in `RouteService.kt`. New functions: `computeAntiParallelFraction()` (O(m²) overlap scorer, internal), `enforceAngularSpread()` (min angular separation, internal), `generateCircularWaypointsForLoop()` (near-circular loop mode), `selectWaypointStrategy()` (mode dispatch), `routeViaGHWithHeadingFlag()` (returns whether heading penalty was applied; `routeViaGH()` now delegates to it). `calculateRoute()` scaling loop replaced single best-by-delta tracking with two-stage selection (bestWithinTolerance by anti-parallel score with early-return at ≤0.15; bestOutOfTolerance by distance delta) and de-prioritises no-heading routes (+0.15). `RouteVariety` ranges reformed: circular vertex count 3–5→4–5, angle jitter ±0.20→±0.15, detour fracs 0.28–0.40/0.60–0.72→0.12–0.25/0.75–0.88, detour offset factors 0.85–1.15→0.70–1.00. Tunable constants in `RouteService` companion object. No `profileFingerprint` bump (geometry only, profiles unchanged). Compiles clean (`compileDebugKotlin` BUILD SUCCESSFUL). NOTE: no JVM/instrumentation test harness exists yet (no `src/test`, no JUnit dep) and `LatLng` is an Android framework type — unit tests for the two `internal` scorer functions require Build/Integrator to add a test sourceSet (likely `androidTest`/Robolectric). Pending device testing (Deploy Agent).
+
+Previous: 2026-06-12 — Feature complete: colored waypoint markers with multi-waypoint routing. Implementation verified: `MarkerIconGenerator.generateCircleMarkerIcon()` creates colored circle icons (red start, green end, yellow mids) with white 3px borders and text labels. `MapManager.addMarker(latLng, title, label?, colorResId?)` accepts optional color parameter. MainActivity correctly displays waypoint count, supports multi-waypoint tap semantics (1st→S, 2nd→E, 3rd+→1/2/3), clear waypoints button, and draggable markers with auto-regeneration. RouteService supports multi-waypoint routing with proportional distance distribution and through-path constraints. All marker colors defined in res/values/colors.xml and Material Design palette complete. Feature branch ready for merge to main.
 
 Previous (2026-05-29): **multi-waypoint support**: ordered `generateRoute(List<LatLng>)` + `normalizeWaypoints()` + `calculateMultiWaypointRoute()` (mandatory through-points with per-leg bulge injection to hit the distance target; warns when waypoint order overshoots tolerance). UI: auto-append tap semantics (S/E/1/2…), text-label markers, Clear Mids button + waypoint count. Earlier: route-shape variety (`RouteVariety`) and draggable start/end markers with auto-regeneration; UI redesign with high-contrast Material Design 2 palette and WCAG AAA accessibility.

@@ -5,75 +5,52 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Route ring: white circle stroke, center (54,54), radius 25 -->
+    <!-- Route ring -->
     <path
         android:pathData="M79,54 A25,25 0 0,0 29,54 A25,25 0 0,0 79,54 Z"
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="3.5"/>
 
-    <!-- Waypoint white backing circles (drawn before colored dots for clean border) -->
-    <!-- Yellow mid at (54,29) -->
-    <path
-        android:pathData="M60.5,29 A6.5,6.5 0 0,0 47.5,29 A6.5,6.5 0 0,0 60.5,29 Z"
-        android:fillColor="#FFFFFF"/>
-    <!-- Red start at (32,67) -->
-    <path
-        android:pathData="M38.5,67 A6.5,6.5 0 0,0 25.5,67 A6.5,6.5 0 0,0 38.5,67 Z"
-        android:fillColor="#FFFFFF"/>
-    <!-- Green end at (76,67) -->
-    <path
-        android:pathData="M82.5,67 A6.5,6.5 0 0,0 69.5,67 A6.5,6.5 0 0,0 82.5,67 Z"
-        android:fillColor="#FFFFFF"/>
-
-    <!-- Waypoint colored dots -->
-    <!-- Yellow midpoint (top, 12 o'clock) -->
+    <!-- Waypoint dots (all white in monochrome; system applies tinting) -->
     <path
         android:pathData="M59,29 A5,5 0 0,0 49,29 A5,5 0 0,0 59,29 Z"
-        android:fillColor="@color/midpoint_yellow"/>
-    <!-- Red start (bottom-left, ~8 o'clock) -->
+        android:fillColor="#FFFFFF"/>
     <path
         android:pathData="M37,67 A5,5 0 0,0 27,67 A5,5 0 0,0 37,67 Z"
-        android:fillColor="@color/start_point_red"/>
-    <!-- Green end (bottom-right, ~4 o'clock) -->
+        android:fillColor="#FFFFFF"/>
     <path
         android:pathData="M81,67 A5,5 0 0,0 71,67 A5,5 0 0,0 81,67 Z"
-        android:fillColor="@color/end_point_green"/>
+        android:fillColor="#FFFFFF"/>
 
-    <!-- Runner figure: centered at (54,54), stride pose, all white -->
-    <!-- Head (filled circle) -->
+    <!-- Runner figure -->
     <path
         android:pathData="M57,40 A3,3 0 0,0 51,40 A3,3 0 0,0 57,40 Z"
         android:fillColor="#FFFFFF"/>
-    <!-- Torso -->
     <path
         android:pathData="M54,43 L54,52"
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="3"
         android:strokeLineCap="round"/>
-    <!-- Forward arm (right arm, swings high-forward) -->
     <path
         android:pathData="M54,46 L60,44"
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="2.5"
         android:strokeLineCap="round"/>
-    <!-- Back arm (left arm, swings low-back) -->
     <path
         android:pathData="M54,46 L48,50"
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="2.5"
         android:strokeLineCap="round"/>
-    <!-- Forward leg (left leg, stride forward-down) -->
     <path
         android:pathData="M54,52 L48,60"
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="2.5"
         android:strokeLineCap="round"/>
-    <!-- Back leg (right leg, push-off trailing) -->
     <path
         android:pathData="M54,52 L61,58"
         android:fillColor="#00000000"

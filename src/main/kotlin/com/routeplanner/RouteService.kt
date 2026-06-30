@@ -19,6 +19,54 @@ class RouteService(private val context: Context) {
     private val dataManager = DataManager(context)
     private val random = kotlin.random.Random.Default
 
+    companion object {
+        // --- Anti-parallel route analysis (algorithm A) ---
+        // Two route segments are considered to overlap/backtrack when their midpoints are within
+        // this distance AND their bearings are (anti-)parallel within the tolerance below.
+        private const val PROXIMITY_THRESHOLD_M = 80.0
+        private const val BEARING_PARALLEL_TOL_DEG = 25.0
+        // Only compare segments that are at least this far apart in the (down-sampled) point list,
+        // so genuinely consecutive segments along a road are never flagged against each other.
+        private const val MIN_SEGMENT_SKIP = 5
+        // Cap the O(m²) pairwise scan by down-sampling long polylines to this many points.
+        private const val MAX_SAMPLE_POINTS = 200
+        // A route whose anti-parallel fraction exceeds this is "ugly" (heavy out-and-back).
+        private const val PARALLEL_SCORE_REJECT = 0.30
+        // A route at or below this is considered a good shape — accept immediately if in tolerance.
+        private const val PARALLEL_SCORE_GOOD = 0.15
+        // Penalty added to the score of routes where the GH heading penalty could not be applied
+        // (so they are de-prioritised relative to equally-shaped routes that respect headings).
+        private const val HEADING_FAIL_PENALTY = 0.15
+
+        // --- Self-intersection detection (algorithm F) ---
+        // Two non-adjacent segments count as a near-crossing when their midpoints fall within this
+        // distance and they meet at a non-parallel angle (a genuine geometric crossing is detected
+        // separately via the CCW test).
+        private const val SELF_INTERSECT_THRESHOLD_M = 100.0
+        // Minimum index gap between segments compared for self-intersection — adjacent road segments
+        // that simply share a vertex must never be flagged as crossing.
+        private const val MIN_SI_SKIP = 5
+
+        // --- Backtracking / U-turn detection (algorithm G) ---
+        // Consecutive segments whose bearings reverse by more than this are treated as a U-turn; the
+        // returning segment's length is counted toward the backtracking fraction.
+        private const val BACKTRACK_BEARING_THRESHOLD_DEG = 150.0
+        // Backtracking fraction at or below which a route is considered clean enough to early-return.
+        private const val BACKTRACK_FRACTION_STRICT = 0.05
+        // Backtracking fraction above STRICT but at/below this is still acceptable (warning, no reject).
+        private const val BACKTRACK_FRACTION_ACCEPTABLE = 0.10
+        // Weight applied to the backtracking fraction when folding it into the composite shape score.
+        private const val BACKTRACK_COMPOSITE_WEIGHT = 0.5
+
+        // --- Circular waypoint geometry (algorithms B & D) ---
+        // If the start→end straight-line distance is below targetDist × this, the points are close
+        // enough that a perpendicular detour would double back — use a loop around the midpoint.
+        private const val LOOP_MODE_THRESHOLD = 0.35
+        private const val MAX_ANGLE_JITTER_RAD = 0.15
+        // Minimum angular separation enforced between circular vertices (~84°, i.e. 90° − 0.10 rad).
+        private val MIN_ANGULAR_SEPARATION_RAD = PI / 2 - 0.10
+    }
+
     // Per-generation variety parameters. Picked once per generateRoute() call so the geometry is
     // stable across the proportional-scaling iterations (changing shape each attempt would prevent
     // the distance from converging). See calculateRoute().
@@ -328,24 +376,31 @@ class RouteService(private val context: Context) {
 
             val directDistM = haversineDistance(start.latitude, start.longitude, end.latitude, end.longitude)
             val isCircular = directDistM < 200.0
+            // Near-circular loop mode (algorithm D): start and end are distinct but close relative to
+            // the target, so a perpendicular detour would double back on itself. Loop around the
+            // midpoint instead, with the first vertex thrown perpendicular to the start→end line.
+            val isLoopMode = !isCircular && directDistM < targetDistanceMeters * LOOP_MODE_THRESHOLD
 
             // Variety parameters chosen ONCE per generation. Re-randomising inside the scaling
             // loop would change the shape every attempt and break distance convergence. Each call
             // to generateRoute() therefore yields a different (but internally consistent) shape.
             val variety = RouteVariety(
-                // Circular: rotate the whole polygon by a random base angle and use 3..5 vertices
-                // with small per-vertex angular jitter and per-vertex radius jitter.
+                // Circular: rotate the whole polygon by a random base angle and use 4..5 vertices
+                // with small per-vertex angular jitter and per-vertex radius jitter. Min vertex
+                // count raised from 3 to 4 (algorithm B) to eliminate the converging-triangle shape.
                 circularStartAngle = random.nextDouble(0.0, 2 * PI),
-                circularPointCount = random.nextInt(3, 6), // 3, 4 or 5 waypoints
-                circularAngleJitter = (0..4).map { random.nextDouble(-0.20, 0.20) },
+                circularPointCount = random.nextInt(4, 6), // 4 or 5 waypoints
+                circularAngleJitter = (0..4).map { random.nextDouble(-MAX_ANGLE_JITTER_RAD, MAX_ANGLE_JITTER_RAD) },
                 circularRadiusJitter = (0..4).map { random.nextDouble(0.80, 1.20) },
                 // Detour: which side of the A->B line the loop bulges, plus where along the line
                 // the two control waypoints sit, plus asymmetric offsets for an S/arc shape.
+                // Fractions reformed (algorithm C): deviate earlier and return later so the outbound
+                // and inbound legs separate instead of running parallel down the middle.
                 detourSide = if (random.nextBoolean()) 1.0 else -1.0,
-                detourFrac1 = random.nextDouble(0.28, 0.40),
-                detourFrac2 = random.nextDouble(0.60, 0.72),
-                detourOffset1Factor = random.nextDouble(0.85, 1.15),
-                detourOffset2Factor = random.nextDouble(0.85, 1.15)
+                detourFrac1 = random.nextDouble(0.12, 0.25),
+                detourFrac2 = random.nextDouble(0.75, 0.88),
+                detourOffset1Factor = random.nextDouble(0.70, 1.00),
+                detourOffset2Factor = random.nextDouble(0.70, 1.00)
             )
 
             // If target < shortest possible road distance, can't route
@@ -359,48 +414,117 @@ class RouteService(private val context: Context) {
                 }
             }
 
-            // Iterate with proportional scaling until distance is within tolerance
+            // Iterate with proportional scaling until distance is within tolerance.
+            //
+            // Multi-objective, three-category selection (algorithm H). For every in-tolerance
+            // attempt we score three shape defects:
+            //   • anti-parallel fraction (algorithm A) — out-and-back overlap,
+            //   • self-intersection fraction (algorithm F) — geometric crossings / bowties,
+            //   • backtracking fraction (algorithm G) — sharp U-turn reversals,
+            // and fold them into a single composite score. Candidates are bucketed into:
+            //   • Category A (clean)  — zero self-intersections,
+            //   • Category B (crossed) — has self-intersections but is still in tolerance,
+            //   • Category C (out-tolerance) — wrong distance, kept only as a last-resort fallback.
+            // Within a category the lowest composite (Category A/B) or smallest distance delta
+            // (Category C) wins. We early-return the moment an attempt is genuinely clean: zero
+            // self-intersections AND ≤5% backtracking AND ≤15% anti-parallel AND the GH heading
+            // penalty was actually applied.
             var scale = 1.0
-            var bestRoute: Route? = null
-            var bestDelta = Double.MAX_VALUE
+            var bestCleanRoute: Route? = null
+            var bestCleanScore = Double.MAX_VALUE
+            var bestCleanAntiParallel = Double.MAX_VALUE
+            var bestCleanBacktrack = Double.MAX_VALUE
+            var bestCrossedRoute: Route? = null
+            var bestCrossedScore = Double.MAX_VALUE
+            var bestOutRoute: Route? = null
+            var bestOutDelta = Double.MAX_VALUE
 
             for (attempt in 0..9) {
-                val waypoints = if (isCircular)
-                    generateCircularWaypoints(start, targetDistanceMeters, scale, variety)
-                else
-                    generateDetourWaypoints(start, end, targetDistanceMeters, directDistM, scale, variety)
+                val waypoints = selectWaypointStrategy(
+                    start, end, targetDistanceMeters, directDistM, scale, variety, isCircular, isLoopMode
+                )
 
                 val viaPoints = listOf(start) + waypoints + listOf(end)
-                val response = routeViaGH(gh, viaPoints, profile) ?: continue
-                if (response.hasErrors()) continue
+                val (response, headingApplied) = routeViaGHWithHeadingFlag(gh, viaPoints, profile)
+                if (response == null || response.hasErrors()) continue
 
                 val path = response.best ?: continue
                 val dist = path.distance
                 if (dist <= 0) continue
 
-                val delta = abs(dist - targetDistanceMeters)
-                if (delta < bestDelta) {
-                    bestDelta = delta
-                    bestRoute = Route(
-                        points = latLngFromGHPoints(path.points),
-                        distance = dist,
-                        hasLoops = isCircular || detectLoops(path.points)
-                    )
-                }
+                val routePoints = latLngFromGHPoints(path.points)
+                val route = Route(
+                    points = routePoints,
+                    distance = dist,
+                    hasLoops = isCircular || isLoopMode || detectLoops(path.points)
+                )
 
-                if (dist >= minDistanceMeters && dist <= maxDistanceMeters)
-                    return Pair(bestRoute, null)
+                if (dist in minDistanceMeters..maxDistanceMeters) {
+                    val antiParallel = computeAntiParallelFraction(routePoints, dist)
+                    val selfFrac = computeSelfIntersectionFraction(routePoints, dist)
+                    val backtrackFrac = computeBacktrackingFraction(routePoints)
+                    val composite = antiParallel +
+                        backtrackFrac * BACKTRACK_COMPOSITE_WEIGHT +
+                        (if (headingApplied) 0.0 else HEADING_FAIL_PENALTY)
+
+                    // Early return: perfectly clean, in-tolerance, heading-respecting route.
+                    if (selfFrac <= 0.0 &&
+                        backtrackFrac <= BACKTRACK_FRACTION_STRICT &&
+                        antiParallel <= PARALLEL_SCORE_GOOD &&
+                        headingApplied
+                    ) {
+                        return Pair(route, null)
+                    }
+
+                    if (selfFrac <= 0.0) {
+                        // Category A — no self-intersection.
+                        if (composite < bestCleanScore) {
+                            bestCleanScore = composite
+                            bestCleanAntiParallel = antiParallel
+                            bestCleanBacktrack = backtrackFrac
+                            bestCleanRoute = route
+                        }
+                    } else {
+                        // Category B — crosses itself, but distance is acceptable.
+                        if (composite < bestCrossedScore) {
+                            bestCrossedScore = composite
+                            bestCrossedRoute = route
+                        }
+                    }
+                } else {
+                    // Category C — out of tolerance; track the closest by distance as a fallback.
+                    val delta = abs(dist - targetDistanceMeters)
+                    if (delta < bestOutDelta) {
+                        bestOutDelta = delta
+                        bestOutRoute = route
+                    }
+                }
 
                 // Proportional scale adjustment for next attempt
                 scale *= targetDistanceMeters / dist
             }
 
-            if (bestRoute != null) {
-                val got = bestRoute.distance.toInt()
-                val tgt = targetDistanceMeters.toInt()
-                Pair(bestRoute, "Best route found: ${got}m (target ${tgt}m). Widen tolerance or adjust points.")
-            } else {
-                Pair(null, "Cannot generate route. No roads found near waypoints.")
+            when {
+                bestCleanRoute != null -> {
+                    // Best clean (non-self-intersecting) route. Surface a soft warning only if it
+                    // still doubles back (anti-parallel-heavy) or backtracks beyond the acceptable
+                    // fraction.
+                    val warn = if (bestCleanAntiParallel > PARALLEL_SCORE_REJECT ||
+                        bestCleanBacktrack > BACKTRACK_FRACTION_ACCEPTABLE)
+                        "Route generated, but it doubles back on itself in places. Regenerate for a cleaner shape."
+                    else null
+                    Pair(bestCleanRoute, warn)
+                }
+                bestCrossedRoute != null -> {
+                    // In tolerance but every candidate crosses itself.
+                    Pair(bestCrossedRoute, "Route generated, but it crosses itself in places. Regenerate for a cleaner shape.")
+                }
+                bestOutRoute != null -> {
+                    val got = bestOutRoute.distance.toInt()
+                    val tgt = targetDistanceMeters.toInt()
+                    Pair(bestOutRoute, "Best route found: ${got}m (target ${tgt}m). Widen tolerance or adjust points.")
+                }
+                else -> Pair(null, "Cannot generate route. No roads found near waypoints.")
             }
         } catch (e: OutOfMemoryError) {
             Pair(null, "Out of memory: region data too large")
@@ -410,13 +534,30 @@ class RouteService(private val context: Context) {
     }
 
     private fun routeViaGH(gh: GraphHopper, points: List<LatLng>, profile: String): com.graphhopper.GHResponse? {
+        return routeViaGHWithHeadingFlag(gh, points, profile).first
+    }
+
+    /**
+     * Routes through [points] and reports whether the anti-backtracking heading penalty was
+     * actually applied. The primary attempt passes per-waypoint departure headings plus a
+     * heading_penalty hint to discourage U-turns; if GH rejects that request shape we retry
+     * without headings. The boolean lets the caller (algorithm E) de-prioritise routes that
+     * could not benefit from the anti-backtracking constraint.
+     *
+     * @return Pair(response, headingApplied). response is null only if both attempts threw.
+     */
+    private fun routeViaGHWithHeadingFlag(
+        gh: GraphHopper,
+        points: List<LatLng>,
+        profile: String
+    ): Pair<com.graphhopper.GHResponse?, Boolean> {
         return try {
             val ghPoints = points.map { GHPoint(it.latitude, it.longitude) }
             // Departure heading at each point toward next point — discourages backtracking
             val headings = points.mapIndexed { i, p ->
                 if (i < points.size - 1) bearingDeg(p, points[i + 1]) else Double.NaN
             }
-            gh.route(
+            val response = gh.route(
                 com.graphhopper.GHRequest(ghPoints).apply {
                     setLocale(Locale.ENGLISH)
                     setProfile(profile)
@@ -425,18 +566,20 @@ class RouteService(private val context: Context) {
                     setHeadings(headings)
                 }
             )
+            Pair(response, true)
         } catch (e: Exception) {
             // Fall back without headings if API differs
             try {
                 val ghPoints = points.map { GHPoint(it.latitude, it.longitude) }
-                gh.route(
+                val response = gh.route(
                     com.graphhopper.GHRequest(ghPoints).apply {
                         setLocale(Locale.ENGLISH)
                         setProfile(profile)
                         putHint("ch.disable", true)
                     }
                 )
-            } catch (e2: Exception) { null }
+                Pair(response, false)
+            } catch (e2: Exception) { Pair(null, false) }
         }
     }
 
@@ -449,21 +592,311 @@ class RouteService(private val context: Context) {
         return (Math.toDegrees(atan2(x, y)) + 360) % 360
     }
 
-    // Circular route: N waypoints (3..5) spaced evenly around the center, but with a random base
+    /**
+     * Chooses and runs the waypoint-generation strategy for a single start→end pair (algorithm E
+     * dispatch). Circular (start≈end), near-circular loop (close but distinct points), or the
+     * standard two-point detour.
+     */
+    private fun selectWaypointStrategy(
+        start: LatLng,
+        end: LatLng,
+        targetDist: Double,
+        directDist: Double,
+        scale: Double,
+        variety: RouteVariety,
+        isCircular: Boolean,
+        isLoopMode: Boolean
+    ): List<LatLng> = when {
+        isCircular -> generateCircularWaypoints(start, targetDist, scale, variety)
+        isLoopMode -> {
+            val midpoint = LatLng((start.latitude + end.latitude) / 2.0, (start.longitude + end.longitude) / 2.0)
+            generateCircularWaypointsForLoop(midpoint, start, end, targetDist, directDist, scale, variety)
+        }
+        else -> generateDetourWaypoints(start, end, targetDist, directDist, scale, variety)
+    }
+
+    // Circular route: N waypoints (4..5) spaced evenly around the center, but with a random base
     // rotation plus per-vertex angular and radius jitter so each generation produces a visibly
-    // different polygon shape instead of the same equilateral triangle every time.
+    // different polygon shape. A minimum angular separation (algorithm B) is enforced after the
+    // jitter so two vertices can never collapse together into a degenerate sliver.
     // Radius starts at targetDist / (2π) and is scaled each iteration to converge on the target.
     private fun generateCircularWaypoints(center: LatLng, targetDist: Double, scale: Double, variety: RouteVariety): List<LatLng> {
         val n = variety.circularPointCount
         val baseR = (targetDist / (2 * PI)) * scale
         val step = 2 * PI / n
-        return (0 until n).map { i ->
-            val angle = variety.circularStartAngle + i * step + variety.circularAngleJitter[i]
-            val r = baseR * variety.circularRadiusJitter[i]
-            val latDeg = r / 111000.0
-            val lonDeg = r / (111000.0 * cos(Math.toRadians(center.latitude)))
-            LatLng(center.latitude + latDeg * cos(angle), center.longitude + lonDeg * sin(angle))
+        val rawAngles = DoubleArray(n) { i ->
+            variety.circularStartAngle + i * step + variety.circularAngleJitter[i]
         }
+        val angles = enforceAngularSpread(rawAngles, MIN_ANGULAR_SEPARATION_RAD)
+        // Algorithm I-A: enforceAngularSpread preserves input index order so the parallel radius
+        // jitter stays aligned, but the polygon must be visited in ascending angular order or the
+        // routed loop crosses itself. Pair each (angle, radiusJitter), sort by angle, then project.
+        return (0 until n)
+            .map { i -> Pair(angles[i], variety.circularRadiusJitter[i]) }
+            .sortedBy { normalizeAngle(it.first) }
+            .map { (angle, radiusJitter) -> projectFromCenter(center, angle, baseR * radiusJitter) }
+    }
+
+    /**
+     * Near-circular loop waypoints (algorithm D). When start and end are close relative to the
+     * target distance, a perpendicular detour would just double back; instead we wrap a loop of
+     * vertices around the [midpoint]. The first vertex is oriented perpendicular to the start→end
+     * bearing so the loop bulges out to the side rather than along the (short) start→end axis.
+     */
+    private fun generateCircularWaypointsForLoop(
+        midpoint: LatLng,
+        start: LatLng,
+        end: LatLng,
+        targetDist: Double,
+        directDist: Double,
+        scale: Double,
+        variety: RouteVariety
+    ): List<LatLng> {
+        val n = variety.circularPointCount
+        // Perpendicular to the start→end compass bearing (bearingDeg: 0°=N, clockwise; the circular
+        // projection below uses the same convention, lat∝cos, lon∝sin).
+        val perpBaseAngle = Math.toRadians(bearingDeg(start, end)) + PI / 2.0
+        // Bias the loop radius outward by the start↔end separation so the loop comfortably clears
+        // both endpoints rather than collapsing between them.
+        val baseR = ((targetDist / (2 * PI)) + directDist / 2.0) * scale
+        val step = 2 * PI / n
+        val rawAngles = DoubleArray(n) { i ->
+            perpBaseAngle + i * step + variety.circularAngleJitter[i]
+        }
+        val angles = enforceAngularSpread(rawAngles, MIN_ANGULAR_SEPARATION_RAD)
+        // Algorithm I-B: visit loop vertices in ascending angular order (see generateCircularWaypoints).
+        return (0 until n)
+            .map { i -> Pair(angles[i], variety.circularRadiusJitter[i]) }
+            .sortedBy { normalizeAngle(it.first) }
+            .map { (angle, radiusJitter) -> projectFromCenter(midpoint, angle, baseR * radiusJitter) }
+    }
+
+    // Projects a point [r] meters from [center] along compass [angle] (radians, 0=N clockwise).
+    private fun projectFromCenter(center: LatLng, angle: Double, r: Double): LatLng {
+        val latDeg = r / 111000.0
+        val lonDeg = r / (111000.0 * cos(Math.toRadians(center.latitude)))
+        return LatLng(center.latitude + latDeg * cos(angle), center.longitude + lonDeg * sin(angle))
+    }
+
+    /**
+     * Anti-parallel fraction scorer (algorithm A). Measures how much of [routePoints] runs parallel
+     * to, or backtracks over, another part of the same route — the visual signature of an ugly
+     * out-and-back. Two segments count as overlapping when their midpoints are within
+     * [PROXIMITY_THRESHOLD_M] AND their bearings are parallel or anti-parallel within
+     * [BEARING_PARALLEL_TOL_DEG]. Only segment pairs at least [MIN_SEGMENT_SKIP] apart in the list
+     * are compared, so consecutive road segments are never falsely flagged. Long polylines are
+     * down-sampled to [MAX_SAMPLE_POINTS] to bound the O(m²) scan.
+     *
+     * @return fraction of route length (0.0..1.0) belonging to overlapping segments.
+     */
+    internal fun computeAntiParallelFraction(routePoints: List<LatLng>, totalDistM: Double): Double {
+        if (routePoints.size < 2 || totalDistM <= 0.0) return 0.0
+
+        val pts = downsample(routePoints, MAX_SAMPLE_POINTS)
+        val segCount = pts.size - 1
+        if (segCount < 2) return 0.0
+
+        val segLen = DoubleArray(segCount)
+        val segBearing = DoubleArray(segCount)
+        val midLat = DoubleArray(segCount)
+        val midLon = DoubleArray(segCount)
+        var sampledTotal = 0.0
+        for (i in 0 until segCount) {
+            val a = pts[i]
+            val b = pts[i + 1]
+            segLen[i] = haversineDistance(a.latitude, a.longitude, b.latitude, b.longitude)
+            segBearing[i] = bearingDeg(a, b)
+            midLat[i] = (a.latitude + b.latitude) / 2.0
+            midLon[i] = (a.longitude + b.longitude) / 2.0
+            sampledTotal += segLen[i]
+        }
+        if (sampledTotal <= 0.0) return 0.0
+
+        val affected = BooleanArray(segCount)
+        for (i in 0 until segCount) {
+            var j = i + MIN_SEGMENT_SKIP
+            while (j < segCount) {
+                val d = haversineDistance(midLat[i], midLon[i], midLat[j], midLon[j])
+                if (d <= PROXIMITY_THRESHOLD_M && bearingsParallel(segBearing[i], segBearing[j])) {
+                    affected[i] = true
+                    affected[j] = true
+                }
+                j++
+            }
+        }
+
+        var affectedLen = 0.0
+        for (i in 0 until segCount) if (affected[i]) affectedLen += segLen[i]
+        return (affectedLen / sampledTotal).coerceIn(0.0, 1.0)
+    }
+
+    // True when two compass bearings are parallel (same heading) or anti-parallel (opposite
+    // heading) within BEARING_PARALLEL_TOL_DEG. Anti-parallel = backtracking on the same line.
+    private fun bearingsParallel(b1: Double, b2: Double): Boolean {
+        val diff = angularDifference(b1, b2)
+        return diff <= BEARING_PARALLEL_TOL_DEG || diff >= 180.0 - BEARING_PARALLEL_TOL_DEG
+    }
+
+    // Normalizes the absolute difference between two compass bearings to the range [0°, 180°].
+    private fun angularDifference(b1: Double, b2: Double): Double {
+        var diff = abs(b1 - b2) % 360.0
+        if (diff > 180.0) diff = 360.0 - diff
+        return diff
+    }
+
+    /**
+     * Self-intersection fraction scorer (algorithm F). Measures how much of [routePoints] crosses
+     * over itself — true geometric segment crossings (CCW test) as well as near-crossings where two
+     * non-adjacent segments pass within [SELF_INTERSECT_THRESHOLD_M] of each other at a non-parallel
+     * angle (a near miss that visually reads as a knot). Anti-parallel overlaps are intentionally
+     * excluded here — those belong to the out-and-back detector (algorithm A). Only segment pairs at
+     * least [MIN_SI_SKIP] apart in the list are compared so adjacent road segments sharing a vertex
+     * are never flagged. Long polylines are down-sampled to [MAX_SAMPLE_POINTS] to bound the O(m²)
+     * scan.
+     *
+     * @return fraction of route length (0.0..1.0) belonging to self-intersecting segments.
+     */
+    internal fun computeSelfIntersectionFraction(routePoints: List<LatLng>, totalDistM: Double): Double {
+        if (routePoints.size < 2 || totalDistM <= 0.0) return 0.0
+
+        val pts = downsample(routePoints, MAX_SAMPLE_POINTS)
+        val segCount = pts.size - 1
+        if (segCount < 2) return 0.0
+
+        val segLen = DoubleArray(segCount)
+        val segBearing = DoubleArray(segCount)
+        val midLat = DoubleArray(segCount)
+        val midLon = DoubleArray(segCount)
+        var sampledTotal = 0.0
+        for (i in 0 until segCount) {
+            val a = pts[i]
+            val b = pts[i + 1]
+            segLen[i] = haversineDistance(a.latitude, a.longitude, b.latitude, b.longitude)
+            segBearing[i] = bearingDeg(a, b)
+            midLat[i] = (a.latitude + b.latitude) / 2.0
+            midLon[i] = (a.longitude + b.longitude) / 2.0
+            sampledTotal += segLen[i]
+        }
+        if (sampledTotal <= 0.0) return 0.0
+
+        val affected = BooleanArray(segCount)
+        for (i in 0 until segCount) {
+            var j = i + MIN_SI_SKIP
+            while (j < segCount) {
+                val crosses = segmentsIntersect(pts[i], pts[i + 1], pts[j], pts[j + 1])
+                val nearCrossNonParallel = if (!crosses) {
+                    val d = haversineDistance(midLat[i], midLon[i], midLat[j], midLon[j])
+                    val ad = angularDifference(segBearing[i], segBearing[j])
+                    d <= SELF_INTERSECT_THRESHOLD_M &&
+                        ad > BEARING_PARALLEL_TOL_DEG &&
+                        ad < 180.0 - BEARING_PARALLEL_TOL_DEG
+                } else false
+                if (crosses || nearCrossNonParallel) {
+                    affected[i] = true
+                    affected[j] = true
+                }
+                j++
+            }
+        }
+
+        var affectedLen = 0.0
+        for (i in 0 until segCount) if (affected[i]) affectedLen += segLen[i]
+        return (affectedLen / sampledTotal).coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * Backtracking / U-turn fraction scorer (algorithm G). Scans the FULL polyline (no down-sampling,
+     * so sharp single-vertex reversals are not smoothed away) and flags every segment whose bearing
+     * reverses by more than [BACKTRACK_BEARING_THRESHOLD_DEG] relative to the preceding segment. The
+     * length of each flagged (returning) segment is summed.
+     *
+     * @return fraction of route length (0.0..1.0) that immediately doubles back on the prior heading.
+     */
+    internal fun computeBacktrackingFraction(routePoints: List<LatLng>): Double {
+        if (routePoints.size < 3) return 0.0
+        val segCount = routePoints.size - 1
+
+        val segLen = DoubleArray(segCount)
+        val segBearing = DoubleArray(segCount)
+        var total = 0.0
+        for (i in 0 until segCount) {
+            val a = routePoints[i]
+            val b = routePoints[i + 1]
+            segLen[i] = haversineDistance(a.latitude, a.longitude, b.latitude, b.longitude)
+            segBearing[i] = bearingDeg(a, b)
+            total += segLen[i]
+        }
+        if (total <= 0.0) return 0.0
+
+        val affected = BooleanArray(segCount)
+        for (i in 0 until segCount - 1) {
+            if (angularDifference(segBearing[i], segBearing[i + 1]) > BACKTRACK_BEARING_THRESHOLD_DEG) {
+                affected[i + 1] = true
+            }
+        }
+
+        var backLen = 0.0
+        for (i in 0 until segCount) if (affected[i]) backLen += segLen[i]
+        return (backLen / total).coerceIn(0.0, 1.0)
+    }
+
+    // Down-samples a polyline to at most [maxPts] points by uniform striding, always keeping the
+    // first and last point so total length is approximately preserved.
+    private fun downsample(points: List<LatLng>, maxPts: Int): List<LatLng> {
+        if (points.size <= maxPts) return points
+        val stride = ceil(points.size.toDouble() / maxPts).toInt().coerceAtLeast(1)
+        val result = ArrayList<LatLng>(maxPts + 1)
+        var i = 0
+        while (i < points.size) {
+            result.add(points[i])
+            i += stride
+        }
+        if (result.last() !== points.last()) result.add(points.last())
+        return result
+    }
+
+    /**
+     * Enforces a minimum angular separation between [angles] (radians) arranged on a circle
+     * (algorithm B). Returns a new array in the SAME index order as the input, so callers that map
+     * a parallel array (e.g. per-vertex radius jitter) stay aligned. The requested separation is
+     * capped at 2π/n so it is always geometrically satisfiable. Vertices are pushed apart with
+     * minimal displacement; if forward relaxation cannot also satisfy the wrap-around gap the
+     * angles fall back to a perfectly even distribution anchored at the smallest input angle.
+     */
+    internal fun enforceAngularSpread(angles: DoubleArray, minSepRad: Double): DoubleArray {
+        val n = angles.size
+        if (n <= 1) return angles.copyOf()
+
+        val twoPi = 2 * PI
+        val sep = min(minSepRad, twoPi / n)
+
+        // Sort by normalized angle, remembering original indices to restore order at the end.
+        val order = (0 until n).sortedBy { normalizeAngle(angles[it]) }
+        val sorted = DoubleArray(n) { normalizeAngle(angles[order[it]]) }
+
+        // Forward relaxation: push each vertex out so it is at least [sep] beyond its predecessor.
+        for (i in 1 until n) {
+            if (sorted[i] - sorted[i - 1] < sep) sorted[i] = sorted[i - 1] + sep
+        }
+
+        // Wrap-around gap between the last vertex and the first (+2π). If forward relaxation grew
+        // the chain too long to leave room here, degrade gracefully to even spacing.
+        val wrapGap = (sorted[0] + twoPi) - sorted[n - 1]
+        if (wrapGap < sep - 1e-9) {
+            val even = twoPi / n
+            for (i in 0 until n) sorted[i] = sorted[0] + i * even
+        }
+
+        val result = DoubleArray(n)
+        for (k in 0 until n) result[order[k]] = sorted[k]
+        return result
+    }
+
+    private fun normalizeAngle(a: Double): Double {
+        val twoPi = 2 * PI
+        var x = a % twoPi
+        if (x < 0) x += twoPi
+        return x
     }
 
     // A→B detour: TWO waypoints offset perpendicularly from points along the A→B line (at
@@ -494,10 +927,37 @@ class RouteService(private val context: Context) {
             return LatLng(baseLat + latOffset, baseLon + lonOffset)
         }
 
-        return listOf(
-            pointAt(variety.detourFrac1, variety.detourOffset1Factor),
-            pointAt(variety.detourFrac2, variety.detourOffset2Factor)
-        )
+        val wp1 = pointAt(variety.detourFrac1, variety.detourOffset1Factor)
+        var wp2 = pointAt(variety.detourFrac2, variety.detourOffset2Factor)
+
+        // Algorithm I-C: convergence guard. When the two control waypoints end up offset such that
+        // segment WP1→WP2 crosses the start→end baseline, the quadrilateral {start, WP1, WP2, end}
+        // is a self-intersecting bowtie and the routed detour folds over itself. Reflect WP2 across
+        // the start→end line to the opposite side so the quadrilateral becomes simple (convex/arc).
+        if (segmentsIntersect(wp1, wp2, start, end)) {
+            wp2 = reflectAcrossLine(wp2, start, end)
+        }
+
+        return listOf(wp1, wp2)
+    }
+
+    /**
+     * Reflects [point] across the (infinite) line through [lineA] and [lineB] using a planar
+     * lat/lon approximation (consistent with the rest of the detour geometry). Returns [point]
+     * unchanged for a degenerate (zero-length) line. Used by algorithm I-C to flip a control
+     * waypoint to the opposite side of the start→end baseline.
+     */
+    internal fun reflectAcrossLine(point: LatLng, lineA: LatLng, lineB: LatLng): LatLng {
+        val dLat = lineB.latitude - lineA.latitude
+        val dLon = lineB.longitude - lineA.longitude
+        val lenSq = dLat * dLat + dLon * dLon
+        if (lenSq < 1e-18) return point
+        // Project (point - lineA) onto the line direction to find the foot of the perpendicular,
+        // then reflect: reflected = 2·foot − point.
+        val t = ((point.latitude - lineA.latitude) * dLat + (point.longitude - lineA.longitude) * dLon) / lenSq
+        val footLat = lineA.latitude + t * dLat
+        val footLon = lineA.longitude + t * dLon
+        return LatLng(2 * footLat - point.latitude, 2 * footLon - point.longitude)
     }
 
 
@@ -517,6 +977,16 @@ class RouteService(private val context: Context) {
         }
         return false
     }
+
+    // LatLng convenience overload of the CCW segment-intersection test below. Treats latitude as the
+    // y axis and longitude as the x axis (planar approximation), matching detectLoops().
+    private fun segmentsIntersect(a: LatLng, b: LatLng, c: LatLng, d: LatLng): Boolean =
+        segmentsIntersect(
+            a.latitude, a.longitude,
+            b.latitude, b.longitude,
+            c.latitude, c.longitude,
+            d.latitude, d.longitude
+        )
 
     private fun segmentsIntersect(
         lat1: Double, lon1: Double,
