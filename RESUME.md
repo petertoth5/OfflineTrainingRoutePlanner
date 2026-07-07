@@ -41,7 +41,7 @@
 
 ## Current State
 
-**Branch**: `feature/no-self-intersection-routing` (device-tested & approved by user 2026-07-07; ready to merge to main and release)
+**Branch**: `main` (feature branch `feature/no-self-intersection-routing` merged 2026-07-07 and deleted)
 
 **Key Files Modified:**
 - `src/main/kotlin/com/routeplanner/RouteService.kt` — Algorithms A–J implemented; Algorithm J SI escape passes added to `calculateRoute()` (~lines 502–582); `randomVariety()` helper extracted (~line 681)
@@ -70,7 +70,7 @@ Copy and paste this into the Claude Code prompt:
 ```
 @.claude\agents\orchestrator-agent.md
 
-**Status Update**: Algorithm J (SI escape passes) implemented 2026-07-07. Build compiled & installed on Samsung Galaxy S23. Branch: feature/no-self-intersection-routing (not yet merged). Manual device testing of self-intersection avoidance behavior awaiting user confirmation. Previous milestone: Algorithms F-I tested & verified on 2026-06-30.
+**Status Update**: Algorithm J (SI escape passes) implemented, merged to main, and released as v1.3.0 on 2026-07-07 (bundled with the earlier One UI icon redesign). Device-tested and confirmed on Samsung Galaxy S23; release APK clean-installed and verified. Previous milestone: Algorithms F-I tested & verified on 2026-06-30.
 
 **Next Steps**: [User specifies next action: (1) test current build and report results, (2) proceed with different feature request, or (3) refine Algorithm J parameters]
 
@@ -229,16 +229,14 @@ The orchestrator automatically routes your request to the right agent(s) and coo
 
 ## Summary
 
-**You are here**: Algorithm J (SI escape passes) implemented on branch `feature/no-self-intersection-routing`. Build compiled & installed on Samsung Galaxy S23 (2026-07-07). Manual device testing of self-intersection avoidance is **pending user confirmation**. Previous milestone (Algorithms F-I) tested & verified on device (2026-06-30).
+**You are here**: Algorithm J (SI escape passes) implemented, device-tested & confirmed on Samsung Galaxy S23, merged to `main`, and released as **v1.3.0** on GitHub (2026-07-07) — release APK re-downloaded and clean-installed to verify. Previous milestone (Algorithms F-I) tested & verified on device (2026-06-30).
 
 **Next actions**: 
-1. Run manual device tests on current build to verify SI escape pass behavior (test scenarios provided in "Testing Checklist" below)
-2. If tests pass: merge to main, tag release
-3. If issues found: refine Algorithm J constants or geometry logic
-4. Or: post new feature/bug request to Orchestrator Agent for next phase
+1. Post new feature/bug request to Orchestrator Agent for next phase
+2. Or refine Algorithm J constants (`SI_MAX_EXTRA_PASSES`, `SI_EXTRA_ATTEMPTS_PER_PASS`) if further tuning is wanted
 
 ---
 
 **File**: `RESUME.md` (this file)  
 **Updated**: 2026-07-07  
-**Status**: Build ready for user testing; awaiting device test results before merge/release
+**Status**: v1.3.0 released; ready for next development cycle
