@@ -1,84 +1,99 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  One UI style foreground: grayscale, flat, minimal.
+  White shapes on the dark charcoal background.
+  All content sits within the adaptive-icon safe zone
+  (inner ~66dp circle of the 108x108 viewport, centred on 54,54).
+
+  Composition:
+    - Point "A" marker (ring + letter) top-left
+    - Dotted route line arcing from A to B
+    - Point "B" marker (ring + letter) top-right
+    - Running-shoe silhouette (upper + sole) across the bottom
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Route ring: white circle stroke, center (54,54), radius 25 -->
+    <!-- ===== Point A marker: ring at (36,37), r=7.5 ===== -->
     <path
-        android:pathData="M79,54 A25,25 0 0,0 29,54 A25,25 0 0,0 79,54 Z"
+        android:pathData="M43.5,37 A7.5,7.5 0 0,0 28.5,37 A7.5,7.5 0 0,0 43.5,37 Z"
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="3.5"/>
+        android:strokeWidth="2.5"/>
+    <!-- Letter "A" inside the ring -->
+    <path
+        android:pathData="M36,33.5 L33.8,40.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M36,33.5 L38.2,40.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"/>
+    <path
+        android:pathData="M34.6,38 L37.4,38"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"/>
 
-    <!-- Waypoint white backing circles (drawn before colored dots for clean border) -->
-    <!-- Yellow mid at (54,29) -->
-    <path
-        android:pathData="M60.5,29 A6.5,6.5 0 0,0 47.5,29 A6.5,6.5 0 0,0 60.5,29 Z"
-        android:fillColor="#FFFFFF"/>
-    <!-- Red start at (32,67) -->
-    <path
-        android:pathData="M38.5,67 A6.5,6.5 0 0,0 25.5,67 A6.5,6.5 0 0,0 38.5,67 Z"
-        android:fillColor="#FFFFFF"/>
-    <!-- Green end at (76,67) -->
-    <path
-        android:pathData="M82.5,67 A6.5,6.5 0 0,0 69.5,67 A6.5,6.5 0 0,0 82.5,67 Z"
-        android:fillColor="#FFFFFF"/>
+    <!-- ===== Dotted route from A to B (arcs gently upward) ===== -->
+    <path android:pathData="M46.5,36.2 A1.3,1.3 0 1,0 46.5,36.201 Z" android:fillColor="#FFFFFF"/>
+    <path android:pathData="M51,35.1 A1.3,1.3 0 1,0 51,35.101 Z" android:fillColor="#FFFFFF"/>
+    <path android:pathData="M55.5,34.9 A1.3,1.3 0 1,0 55.5,34.901 Z" android:fillColor="#FFFFFF"/>
+    <path android:pathData="M60,35.6 A1.3,1.3 0 1,0 60,35.601 Z" android:fillColor="#FFFFFF"/>
+    <path android:pathData="M63.5,37.2 A1.3,1.3 0 1,0 63.5,37.201 Z" android:fillColor="#FFFFFF"/>
 
-    <!-- Waypoint colored dots -->
-    <!-- Yellow midpoint (top, 12 o'clock) -->
+    <!-- ===== Point B marker: ring at (72,38), r=7.5 ===== -->
     <path
-        android:pathData="M59,29 A5,5 0 0,0 49,29 A5,5 0 0,0 59,29 Z"
-        android:fillColor="@color/midpoint_yellow"/>
-    <!-- Red start (bottom-left, ~8 o'clock) -->
+        android:pathData="M79.5,38 A7.5,7.5 0 0,0 64.5,38 A7.5,7.5 0 0,0 79.5,38 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"/>
+    <!-- Letter "B" inside the ring -->
     <path
-        android:pathData="M37,67 A5,5 0 0,0 27,67 A5,5 0 0,0 37,67 Z"
-        android:fillColor="@color/start_point_red"/>
-    <!-- Green end (bottom-right, ~4 o'clock) -->
+        android:pathData="M70,34.5 L70,41.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"/>
     <path
-        android:pathData="M81,67 A5,5 0 0,0 71,67 A5,5 0 0,0 81,67 Z"
-        android:fillColor="@color/end_point_green"/>
+        android:pathData="M70,34.5 A2.3,1.75 0 0,1 70,38"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"/>
+    <path
+        android:pathData="M70,38 A2.4,1.75 0 0,1 70,41.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"/>
 
-    <!-- Runner figure: centered at (54,54), stride pose, all white -->
-    <!-- Head (filled circle) -->
+    <!-- ===== Running-shoe silhouette (side profile, toe to the right) ===== -->
+    <!-- Upper body -->
     <path
-        android:pathData="M57,40 A3,3 0 0,0 51,40 A3,3 0 0,0 57,40 Z"
+        android:pathData="M38.5,64.6
+            C36.8,64 36.8,61 38.5,60.3
+            C39.5,58 41,57 43,57
+            C44.5,57.2 45,58.8 45.5,60
+            C46,61.5 47.5,62.2 49,62
+            C50,61.8 51,60 52,58.2
+            C55,57.6 58,59 61,60.2
+            C64,61.1 66.5,61.1 68.5,62.4
+            C70.6,63.6 71,64 70.5,64.6
+            L39.5,64.6
+            C39,64.6 38.6,64.6 38.5,64.6 Z"
         android:fillColor="#FFFFFF"/>
-    <!-- Torso -->
+    <!-- Sole (slight toe kick, small gap above separates it from the upper) -->
     <path
-        android:pathData="M54,43 L54,52"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"/>
-    <!-- Forward arm (right arm, swings high-forward) -->
-    <path
-        android:pathData="M54,46 L60,44"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"/>
-    <!-- Back arm (left arm, swings low-back) -->
-    <path
-        android:pathData="M54,46 L48,50"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"/>
-    <!-- Forward leg (left leg, stride forward-down) -->
-    <path
-        android:pathData="M54,52 L48,60"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"/>
-    <!-- Back leg (right leg, push-off trailing) -->
-    <path
-        android:pathData="M54,52 L61,58"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"/>
+        android:pathData="M38,66.8
+            C37,66.5 37.2,65.4 38.5,65.2
+            L68,65.2
+            C70,65.2 71.5,65.8 71,66.6
+            C70.5,67.2 69,67.4 67.5,67.4
+            L40.5,67.4
+            C39.2,67.4 38.6,67.2 38,66.8 Z"
+        android:fillColor="#FFFFFF"/>
 
 </vector>

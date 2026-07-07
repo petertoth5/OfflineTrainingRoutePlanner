@@ -242,16 +242,15 @@ Colors coordinated with main activity for visual continuity.
 
 ### App Icon Design
 
-The app icon uses Android's Adaptive Icon format (API 26+):
-- **Foreground:** Composite design showing:
-  - **Running figure** (left) — white stick figure in mid-stride on primary blue background
-  - **Route path** (right) — curved path with start (red), mid waypoint (yellow), and end (green) markers
-- **Background:** Solid primary blue (#1565C0)
-- **Monochrome:** Grayscale version for system-managed tinting
-- **Safe zone:** 81dp within 108dp canvas
-- **Design intent:** Visually represents both "running" activity and "route planning" function
-
-Fallback PNG icon (192×192) provided for API 24-25 devices with same visual design.
+The app icon uses Android's Adaptive Icon format (API 26+), styled after Samsung One UI — flat, minimal, high-contrast, grayscale only:
+- **Foreground:** White shapes on the dark background —
+  - **Point "A"** (top-left) and **Point "B"** (top-right) markers, each a hollow ring with the letter inside
+  - **Dotted route line** arcing gently from A to B (evokes a planned route, not a loop)
+  - **Running-shoe silhouette** (upper + sole) across the bottom, signalling the training-route theme
+- **Background:** Solid dark charcoal (#1C1C1E), flat (no gradient)
+- **Monochrome:** Same shapes in a single tintable colour for Android 13+ themed icons
+- **Safe zone:** All content kept within the inner ~66dp circle of the 108×108 canvas (centred on 54,54)
+- **Design intent:** "A → B route planning" plus a running-shoe cue for the training theme, in a clean grayscale One UI look
 
 ### Summary of Design Goals
 
@@ -282,7 +281,7 @@ res/
 ├── layout/activity_main.xml     # Map + profile toggle + controls
 ├── layout/activity_splash.xml   # Region spinner + download progress
 ├── drawable/ic_launcher_foreground.xml   # App icon foreground vector
-├── drawable/ic_launcher_background.xml   # App icon background (#1565C0)
+├── drawable/ic_launcher_background.xml   # App icon background (#1C1C1E)
 ├── mipmap-anydpi-v26/ic_launcher.xml     # Adaptive icon (API 26+)
 ├── mipmap-anydpi-v26/ic_launcher_round.xml
 └── mipmap-anydpi/ic_launcher.xml         # Legacy layer-list fallback
