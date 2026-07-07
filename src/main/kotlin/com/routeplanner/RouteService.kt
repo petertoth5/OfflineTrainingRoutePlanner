@@ -58,6 +58,16 @@ class RouteService(private val context: Context) {
         // Weight applied to the backtracking fraction when folding it into the composite shape score.
         private const val BACKTRACK_COMPOSITE_WEIGHT = 0.5
 
+        // --- SI escape passes (algorithm J) ---
+        // When the main 10-attempt scaling loop produces only self-crossing (Category B) in-tolerance
+        // candidates and no clean (Category A) candidate, we retry with freshly randomised waypoint
+        // geometry. Different waypoint placement (rotation, vertex count, detour side) has a high
+        // probability of avoiding the crossing that was built into the initial geometry set.
+        // Each escape pass gets its own RouteVariety and scale reset — SI_MAX_EXTRA_PASSES passes
+        // of SI_EXTRA_ATTEMPTS_PER_PASS GH calls each. Worst case: 10 + 3×5 = 25 GH calls total.
+        private const val SI_MAX_EXTRA_PASSES = 3
+        private const val SI_EXTRA_ATTEMPTS_PER_PASS = 5
+
         // --- Circular waypoint geometry (algorithms B & D) ---
         // If the start→end straight-line distance is below targetDist × this, the points are close
         // enough that a perpendicular detour would double back — use a loop around the midpoint.
@@ -384,24 +394,9 @@ class RouteService(private val context: Context) {
             // Variety parameters chosen ONCE per generation. Re-randomising inside the scaling
             // loop would change the shape every attempt and break distance convergence. Each call
             // to generateRoute() therefore yields a different (but internally consistent) shape.
-            val variety = RouteVariety(
-                // Circular: rotate the whole polygon by a random base angle and use 4..5 vertices
-                // with small per-vertex angular jitter and per-vertex radius jitter. Min vertex
-                // count raised from 3 to 4 (algorithm B) to eliminate the converging-triangle shape.
-                circularStartAngle = random.nextDouble(0.0, 2 * PI),
-                circularPointCount = random.nextInt(4, 6), // 4 or 5 waypoints
-                circularAngleJitter = (0..4).map { random.nextDouble(-MAX_ANGLE_JITTER_RAD, MAX_ANGLE_JITTER_RAD) },
-                circularRadiusJitter = (0..4).map { random.nextDouble(0.80, 1.20) },
-                // Detour: which side of the A->B line the loop bulges, plus where along the line
-                // the two control waypoints sit, plus asymmetric offsets for an S/arc shape.
-                // Fractions reformed (algorithm C): deviate earlier and return later so the outbound
-                // and inbound legs separate instead of running parallel down the middle.
-                detourSide = if (random.nextBoolean()) 1.0 else -1.0,
-                detourFrac1 = random.nextDouble(0.12, 0.25),
-                detourFrac2 = random.nextDouble(0.75, 0.88),
-                detourOffset1Factor = random.nextDouble(0.70, 1.00),
-                detourOffset2Factor = random.nextDouble(0.70, 1.00)
-            )
+            // If the main pass produces only self-crossing candidates, SI escape passes (algorithm J)
+            // call randomVariety() again to generate a completely different waypoint geometry.
+            val variety = randomVariety()
 
             // If target < shortest possible road distance, can't route
             if (!isCircular) {
@@ -504,6 +499,88 @@ class RouteService(private val context: Context) {
                 scale *= targetDistanceMeters / dist
             }
 
+            // --- SI escape passes (algorithm J) ---
+            // The main loop keeps the same RouteVariety (waypoint geometry) across all 10 attempts
+            // to let the proportional scaler converge on the right distance.  If that fixed geometry
+            // happens to always produce a self-crossing route, we escape by trying up to
+            // SI_MAX_EXTRA_PASSES fresh variety sets.  Each pass gets its own RouteVariety and a
+            // scale reset to 1.0 so it can converge independently.
+            //
+            // Trigger condition: in-tolerance but crossing routes exist (Category B) and no clean
+            // (Category A) route was found.  If only out-of-tolerance results exist (Category C)
+            // the issue is road topology / convergence, not crossing geometry — skip escape passes.
+            if (bestCleanRoute == null && bestCrossedRoute != null) {
+                escapeLoop@ for (extraPass in 0 until SI_MAX_EXTRA_PASSES) {
+                    val escapeVariety = randomVariety()
+                    var escapeScale = 1.0
+                    for (attempt in 0 until SI_EXTRA_ATTEMPTS_PER_PASS) {
+                        val waypoints = selectWaypointStrategy(
+                            start, end, targetDistanceMeters, directDistM,
+                            escapeScale, escapeVariety, isCircular, isLoopMode
+                        )
+                        val viaPoints = listOf(start) + waypoints + listOf(end)
+                        val (response, headingApplied) = routeViaGHWithHeadingFlag(gh, viaPoints, profile)
+                        if (response == null || response.hasErrors()) continue
+
+                        val path = response.best ?: continue
+                        val dist = path.distance
+                        if (dist <= 0) continue
+
+                        val routePoints = latLngFromGHPoints(path.points)
+                        val route = Route(
+                            points = routePoints,
+                            distance = dist,
+                            hasLoops = isCircular || isLoopMode || detectLoops(path.points)
+                        )
+
+                        if (dist in minDistanceMeters..maxDistanceMeters) {
+                            val antiParallel = computeAntiParallelFraction(routePoints, dist)
+                            val selfFrac = computeSelfIntersectionFraction(routePoints, dist)
+                            val backtrackFrac = computeBacktrackingFraction(routePoints)
+                            val composite = antiParallel +
+                                backtrackFrac * BACKTRACK_COMPOSITE_WEIGHT +
+                                (if (headingApplied) 0.0 else HEADING_FAIL_PENALTY)
+
+                            // Early return: perfectly clean route found in an escape pass.
+                            if (selfFrac <= 0.0 &&
+                                backtrackFrac <= BACKTRACK_FRACTION_STRICT &&
+                                antiParallel <= PARALLEL_SCORE_GOOD &&
+                                headingApplied
+                            ) {
+                                return Pair(route, null)
+                            }
+
+                            if (selfFrac <= 0.0) {
+                                // Category A — found a clean route; update best and stop escaping.
+                                if (composite < bestCleanScore) {
+                                    bestCleanScore = composite
+                                    bestCleanAntiParallel = antiParallel
+                                    bestCleanBacktrack = backtrackFrac
+                                    bestCleanRoute = route
+                                }
+                                // A clean route now exists — no need for more escape passes.
+                                break@escapeLoop
+                            } else {
+                                // Still Category B — update best crossed in case no clean is ever found.
+                                if (composite < bestCrossedScore) {
+                                    bestCrossedScore = composite
+                                    bestCrossedRoute = route
+                                }
+                            }
+                        } else {
+                            // Category C — out of tolerance; update best out-of-tolerance fallback.
+                            val delta = abs(dist - targetDistanceMeters)
+                            if (delta < bestOutDelta) {
+                                bestOutDelta = delta
+                                bestOutRoute = route
+                            }
+                        }
+
+                        escapeScale *= targetDistanceMeters / dist
+                    }
+                }
+            }
+
             when {
                 bestCleanRoute != null -> {
                     // Best clean (non-self-intersecting) route. Surface a soft warning only if it
@@ -591,6 +668,33 @@ class RouteService(private val context: Context) {
         val y = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
         return (Math.toDegrees(atan2(x, y)) + 360) % 360
     }
+
+    /**
+     * Creates one set of randomised geometry parameters for a route generation pass (algorithm J
+     * helper). Called once for the main scaling pass in calculateRoute() and once per SI escape
+     * pass when the main pass produced only self-crossing candidates. Keeping this in a single
+     * function ensures the two call sites always draw from the same parameter ranges.
+     *
+     * See RouteVariety for field semantics. The circular and detour parameters mirror what was
+     * previously inlined in calculateRoute() — extracting here avoids duplication.
+     */
+    private fun randomVariety(): RouteVariety = RouteVariety(
+        // Circular: random base rotation + 4 or 5 vertices with per-vertex angular/radius jitter.
+        // Min vertex count 4 (algorithm B) avoids the converging-triangle artefact.
+        circularStartAngle = random.nextDouble(0.0, 2 * PI),
+        circularPointCount = random.nextInt(4, 6),
+        circularAngleJitter = (0..4).map { random.nextDouble(-MAX_ANGLE_JITTER_RAD, MAX_ANGLE_JITTER_RAD) },
+        circularRadiusJitter = (0..4).map { random.nextDouble(0.80, 1.20) },
+        // Detour: which side of the A→B line the loop bulges (50/50 random), where along the line
+        // the two control waypoints sit, and asymmetric perpendicular offsets for an arc/S shape.
+        // Fractions push the waypoints toward the ends of the leg (algorithm C) so outbound and
+        // inbound legs separate rather than running parallel down the middle.
+        detourSide = if (random.nextBoolean()) 1.0 else -1.0,
+        detourFrac1 = random.nextDouble(0.12, 0.25),
+        detourFrac2 = random.nextDouble(0.75, 0.88),
+        detourOffset1Factor = random.nextDouble(0.70, 1.00),
+        detourOffset2Factor = random.nextDouble(0.70, 1.00)
+    )
 
     /**
      * Chooses and runs the waypoint-generation strategy for a single start→end pair (algorithm E

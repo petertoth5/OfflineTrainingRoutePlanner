@@ -406,14 +406,15 @@ Key fields: `selectedProfile: String`, `minTolerance: Int`, `maxTolerance: Int`,
 **Multi-waypoint routing** (`calculateMultiWaypointRoute()`): routes through every user waypoint **in order** (mandatory through-points — never reordered or dropped). Baseline = straight through-path. If baseline > maxTolerance → return route + the "incompatible" warning. Otherwise injects one perpendicular bulge per leg (`bulgePoint()`), distributing the extra distance proportionally to each leg's length, and iterates with the same proportional-scaling loop (10 attempts) used for single-leg routes.
 
 **Routing algorithm** (`calculateRoute()`):
-Priority is route **length**, not shortest path. Generates intermediate GH waypoints and iterates with proportional scaling until the routed distance is within tolerance. An **anti-parallel scorer** then guides selection so the chosen route avoids out-and-back overlaps.
+Priority is route **length**, not shortest path. Generates intermediate GH waypoints and iterates with proportional scaling until the routed distance is within tolerance. An **anti-parallel scorer** then guides selection so the chosen route avoids out-and-back overlaps. If the main loop produces only self-crossing in-tolerance routes, **SI escape passes** (algorithm J) retry with fresh waypoint geometry.
 
 ```
 isCircular  = haversine(start, end) < 200m
 isLoopMode  = !isCircular && haversine(start,end) < targetDist × 0.35
 
-variety = RouteVariety(...)   # randomised ONCE per generateRoute() call (see below)
+variety = randomVariety()     # randomised ONCE per generateRoute() call (see randomVariety() below)
 
+--- Main loop: 10 scaling attempts ---
 for attempt in 0..9:
     waypoints = selectWaypointStrategy(...):
         isCircular → generateCircularWaypoints(center, targetDist, scale, variety)
@@ -442,6 +443,21 @@ for attempt in 0..9:
         track Category C (out-of-tolerance) by |dist − target|
     scale *= targetDist / dist                     # proportional adjustment
 
+--- SI escape passes: if no clean route found in main loop, retry with fresh geometry (algorithm J) ---
+if bestCleanRoute == null AND bestCrossedRoute != null:
+    for escapePass in 0..SI_MAX_EXTRA_PASSES-1:
+        escapeVariety = randomVariety()    # completely different geometry set
+        escapeScale = 1.0
+        for attempt in 0..SI_EXTRA_ATTEMPTS_PER_PASS-1:
+            # [same as main loop: select waypoints, route via GH, score]
+            if selfFrac == 0:              # Category A found!
+                track it and break escapeLoop  # stop retrying; use this clean route
+            else if selfFrac > 0:          # Category B (crossed) in escape pass
+                track it as fallback
+            else:                          # Category C (out-of-tolerance)
+                track it as last-resort fallback
+            escapeScale *= targetDist / dist
+
 return Category A   (soft warning if antiParallel > 0.30 or backtrack > 0.10)
      ?? Category B   ("crosses itself" warning)
      ?? Category C   ("best found" message)
@@ -449,12 +465,16 @@ return Category A   (soft warning if antiParallel > 0.30 or backtrack > 0.10)
 
 All waypoints are real GH routing calls → all segments follow actual roads.
 
+**Route variety** (`randomVariety()`, algorithm J helper): Extracted as a standalone function (previously inlined in `calculateRoute()`). Called once for the main loop and once per SI escape pass to ensure both draw from identical parameter ranges. Returns a `RouteVariety` object with random geometry parameters: circular vertex count (4–5), rotation angle, per-vertex angular/radius jitter, and detour side/fractions.
+
 **Three shape scorers** (post-route, all `internal` for testability):
 - **Anti-parallel** (`computeAntiParallelFraction`, algorithm A): O(m²) overlap. Down-samples to ≤200 pts, flags segment pairs ≥5 apart whose midpoints are within 80m AND bearings are (anti-)parallel within 25°. >0.30 reject-worthy, ≤0.15 good.
 - **Self-intersection** (`computeSelfIntersectionFraction`, algorithm F): geometric crossings (CCW `segmentsIntersect`) plus near-crossings — segment pairs ≥`MIN_SI_SKIP`(5) apart whose midpoints are within `SELF_INTERSECT_THRESHOLD_M`(100m) at a **non-parallel** angle. Down-samples to ≤200 pts. Returns fraction of crossing length.
 - **Backtracking** (`computeBacktrackingFraction`, algorithm G): scans the **full** polyline (no down-sampling) for consecutive-segment bearing reversals > `BACKTRACK_BEARING_THRESHOLD_DEG`(150°); the returning segment's length counts. A clean U-turn ≈ 0.50.
 
-**Helpers**: `angularDifference(b1,b2)` normalizes a bearing difference to [0°,180°]; `segmentsIntersect(a,b,c,d: LatLng)` is a LatLng overload of the CCW test; `reflectAcrossLine(point,lineA,lineB)` reflects a point across a line (planar lat/lon) for algorithm I-C. `enforceAngularSpread(angles, minSep)` pushes circular vertices apart to a minimum separation (capped at 2π/n, even-spacing fallback) while preserving input index order. Tunable constants live in the `RouteService` companion object.
+**Helpers**: `angularDifference(b1,b2)` normalizes a bearing difference to [0°,180°]; `segmentsIntersect(a,b,c,d: LatLng)` is a LatLng overload of the CCW test; `reflectAcrossLine(point,lineA,lineB)` reflects a point across a line (planar lat/lon) for algorithm I-C. `enforceAngularSpread(angles, minSep)` pushes circular vertices apart to a minimum separation (capped at 2π/n, even-spacing fallback) while preserving input index order. `randomVariety()` generates a random `RouteVariety` object with geometry parameters (algorithm J helper) — used once in the main scaling loop and once per SI escape pass to ensure consistent parameter ranges.
+
+**Tunable constants** (all in `RouteService` companion object): Algorithm F/G/H scoring weights (`SELF_INTERSECT_THRESHOLD_M`=100, `MIN_SI_SKIP`=5, `BACKTRACK_BEARING_THRESHOLD_DEG`=150, `BACKTRACK_FRACTION_STRICT`=0.05, `BACKTRACK_FRACTION_ACCEPTABLE`=0.10, `BACKTRACK_COMPOSITE_WEIGHT`=0.5, `PARALLEL_SCORE_GOOD`=0.15, `PARALLEL_SCORE_REJECT`=0.30), circular waypoint jitter (`MAX_ANGLE_JITTER_RAD`=0.15, `MIN_ANGULAR_SEPARATION_RAD`≈1.47 rad/84°), loop-mode threshold (`LOOP_MODE_THRESHOLD`=0.35), and **SI escape pass limits** (`SI_MAX_EXTRA_PASSES`=3, `SI_EXTRA_ATTEMPTS_PER_PASS`=5).
 
 **Waypoint placement refinement (algorithm I)**: `generateCircularWaypoints` / `generateCircularWaypointsForLoop` now sort (angle, radiusJitter) pairs by angle **after** `enforceAngularSpread()` so vertices are visited in ascending angular order (prevents a self-crossing visit order). `generateDetourWaypoints` adds a convergence guard: if segment WP1→WP2 crosses the start→end baseline (a bowtie quadrilateral), WP2 is reflected to the opposite side via `reflectAcrossLine()`.
 
@@ -568,7 +588,7 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 3. Never upgrade GraphHopper past 6.0 — see Dependencies constraint above.
 4. Never call `mapManager.clear()` after route display — use `mapManager.clearRoute()`.
 
-**Last Updated**: 2026-06-30 — Refined route planning (algorithms F–I) **TESTED & VERIFIED** on Samsung Galaxy S24+ (Android 16). No self-intersections, no U-turns, stable geometry, early-return optimization confirmed. New `internal` functions: `computeSelfIntersectionFraction()` (algorithm F — CCW crossings + non-parallel near-crossings, O(m²), down-sampled), `computeBacktrackingFraction()` (algorithm G — full-polyline >150° bearing-reversal scan), `reflectAcrossLine()` (algorithm I-C helper). New private helpers: `angularDifference()` (bearing diff → [0°,180°], now also backs `bearingsParallel`), `segmentsIntersect(a,b,c,d: LatLng)` overload of the CCW test. `calculateRoute()` scaling loop replaced two-stage selection with **three-category** tracking (A clean / B crossed / C out-of-tolerance); composite score = antiParallel + backtrack×0.5 + (no-heading ? 0.15); early-return gate tightened to selfFrac==0 AND backtrack≤0.05 AND antiParallel≤0.15 AND headingApplied. `generateCircularWaypoints()` & `generateCircularWaypointsForLoop()` now sort (angle, radiusJitter) by angle after `enforceAngularSpread()` (algorithm I-A/I-B). `generateDetourWaypoints()` adds a bowtie convergence guard reflecting WP2 across the baseline (algorithm I-C). New companion constants: `SELF_INTERSECT_THRESHOLD_M`(100), `MIN_SI_SKIP`(5), `BACKTRACK_BEARING_THRESHOLD_DEG`(150), `BACKTRACK_FRACTION_STRICT`(0.05), `BACKTRACK_FRACTION_ACCEPTABLE`(0.10), `BACKTRACK_COMPOSITE_WEIGHT`(0.5). No `profileFingerprint` bump (geometry/selection only, profiles unchanged). App icon redesigned: Samsung OneUI style with geometric route ring, runner silhouette, colored waypoint dots. Builds clean (`compileDebugKotlin` BUILD SUCCESSFUL). Device testing: ✓ Circular routes (no self-crossing, 4+ waypoints, symmetric), ✓ Detour routes (no U-turns, smooth arcs), ✓ Loop mode (perpendicular bulge, early-return < 3s), ✓ Stability (identical routes on repeated generation). Ready for merge to main.
+**Last Updated**: 2026-07-07 — Self-intersection escape passes (algorithm J) implemented. When main 10-attempt loop finds only self-crossing in-tolerance routes (Category B), new SI escape mechanism retries with up to `SI_MAX_EXTRA_PASSES` (3) fresh `randomVariety()` sets, each running `SI_EXTRA_ATTEMPTS_PER_PASS` (5) scaling attempts. Early return if any escape pass finds Category A (clean) route; otherwise fall back to best Category B. Extracted `randomVariety()` helper ensures main loop and escape passes draw from identical geometry parameter ranges. Build compiled and installed on Samsung Galaxy S23 (Android 14+); device-level testing confirmed by user 2026-07-07 — self-intersection avoidance approved for commit and release. **Previous milestone (2026-06-30)**: Refined route planning (algorithms F–I) tested & verified on Samsung Galaxy S24+. No self-intersections, no U-turns, stable geometry, early-return optimization confirmed. New `internal` functions: `computeSelfIntersectionFraction()` (algorithm F), `computeBacktrackingFraction()` (algorithm G), `reflectAcrossLine()` (algorithm I-C helper). `calculateRoute()` implements three-category selection (A clean / B crossed / C out-of-tolerance). App icon redesigned: Samsung OneUI style. Builds clean.
 
 Previous: 2026-06-30 — Anti-parallel route planning (algorithms A–E) implemented in `RouteService.kt`. New functions: `computeAntiParallelFraction()` (O(m²) overlap scorer, internal), `enforceAngularSpread()` (min angular separation, internal), `generateCircularWaypointsForLoop()` (near-circular loop mode), `selectWaypointStrategy()` (mode dispatch), `routeViaGHWithHeadingFlag()` (returns whether heading penalty was applied; `routeViaGH()` now delegates to it). `calculateRoute()` scaling loop replaced single best-by-delta tracking with two-stage selection (bestWithinTolerance by anti-parallel score with early-return at ≤0.15; bestOutOfTolerance by distance delta) and de-prioritises no-heading routes (+0.15). `RouteVariety` ranges reformed: circular vertex count 3–5→4–5, angle jitter ±0.20→±0.15, detour fracs 0.28–0.40/0.60–0.72→0.12–0.25/0.75–0.88, detour offset factors 0.85–1.15→0.70–1.00. Tunable constants in `RouteService` companion object. No `profileFingerprint` bump (geometry only, profiles unchanged). Compiles clean (`compileDebugKotlin` BUILD SUCCESSFUL). NOTE: no JVM/instrumentation test harness exists yet (no `src/test`, no JUnit dep) and `LatLng` is an Android framework type — unit tests for the two `internal` scorer functions require Build/Integrator to add a test sourceSet (likely `androidTest`/Robolectric). Pending device testing (Deploy Agent).
 

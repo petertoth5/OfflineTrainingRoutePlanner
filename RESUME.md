@@ -1,19 +1,32 @@
 # Resume Development — OfflineTrainingRoutePlanner
 
-**Last Checkpoint**: 2026-06-30 (Commit: Refined route planning algorithms F-I + Samsung OneUI icon)
+**Last Checkpoint**: 2026-07-07 (Commit: SI escape passes — algorithm J)
 
 ---
 
 ## What Was Done
 
-### Algorithms F–I: Self-Intersection & Backtracking Prevention
+### Algorithm J: SI Escape Passes (Self-Intersection Avoidance Retry)
+- **Problem**: Main 10-attempt loop sometimes converges to a geometry set that always self-crosses (Category B), yielding no clean (Category A) routes even with proportional scaling
+- **Solution**: If main loop ends with `bestCleanRoute == null && bestCrossedRoute != null`, run up to 3 additional passes, each with completely fresh `randomVariety()` geometry and 5 scaling attempts
+- **Implementation**: `escapeLoop` in `calculateRoute()` (lines 502–582); triggered only when in-tolerance crossing routes exist but no clean route was found in main 10 attempts
+- **Result**: Early return if any escape pass finds Category A; otherwise use best Category B from main or escape passes; worst case 10+3×5=25 GH calls total
+- **Constants**: `SI_MAX_EXTRA_PASSES`=3, `SI_EXTRA_ATTEMPTS_PER_PASS`=5 (both tunable in `RouteService` companion object)
+- **Helper**: Extracted `randomVariety(): RouteVariety` (line 681) — ensures main loop and escape passes draw from identical parameter ranges
+
+### Algorithms F–I: Self-Intersection & Backtracking Prevention (Previous Milestone)
 - **Algorithm F** (`computeSelfIntersectionFraction`): Detects polyline crossings via CCW test + non-parallel near-crossings (100m proximity, O(m²))
 - **Algorithm G** (`computeBacktrackingFraction`): Flags >150° bearing reversals (U-turns), returns backtracking fraction
 - **Algorithm H** (`calculateRoute` revised): Three-category selection — clean routes (A) preferred, crossed routes (B) accepted with warning, out-of-tolerance (C) fallback
 - **Algorithm I**: Waypoint placement fixes — angular-sorted circular vertices (I-A/I-B), convergence guard + WP2 reflection for detours (I-C)
 
 ### Testing Status
-✓ **Device Tested** on Samsung Galaxy S24+ (Android 16):
+✓ **Device Tested & Confirmed** (2026-07-07, Samsung Galaxy S23, Android 14+): Algorithm J self-intersection avoidance confirmed working — user reports "much better result," approved for commit and release
+- Algorithm J escape passes mechanism integrated into `calculateRoute()`, compiles clean
+- APK built successfully (11.0 MB, not committed to git)
+- Routes that previously self-crossed now resolved by escape passes, per user confirmation
+
+✓ **Previous Device Testing** (2026-06-30, Algorithms F–I on Samsung Galaxy S24+ Android 16):
 - Circular routes: No self-crossing, even waypoint distribution, symmetric shape
 - Detour routes: No U-turns, smooth arc geometry, no bowtie intersections
 - Loop mode: Perpendicular bulge, fast generation (< 3s via early-return)
@@ -28,15 +41,17 @@
 
 ## Current State
 
-**Branch**: `main` (all changes committed)
+**Branch**: `feature/no-self-intersection-routing` (device-tested & approved by user 2026-07-07; ready to merge to main and release)
 
 **Key Files Modified:**
-- `src/main/kotlin/com/routeplanner/RouteService.kt` — Algorithms A–I implemented, `calculateRoute()` rewritten for three-category selection
-- `res/drawable/ic_launcher_*.xml` — App icon updated
-- `res/mipmap-anydpi-v26/ic_launcher*.xml` — Icon references updated
-- `AGENT_GUIDE.md` — Status updated (test verified, ready for production)
+- `src/main/kotlin/com/routeplanner/RouteService.kt` — Algorithms A–J implemented; Algorithm J SI escape passes added to `calculateRoute()` (~lines 502–582); `randomVariety()` helper extracted (~line 681)
+- `res/drawable/ic_launcher_*.xml` — App icon (from previous milestone, already in branch)
+- `res/mipmap-anydpi-v26/ic_launcher*.xml` — Icon references (from previous milestone, already in branch)
+- `AGENT_GUIDE.md` — Updated for Algorithm J (last updated 2026-07-07)
+- `RESUME.md` — Updated for Algorithm J (this file, last updated 2026-07-07)
 
-**Build Status**: ✓ Compiles clean (11.0 MB APK, not committed to git)
+**Build Status**: ✓ Compiles clean (`./gradlew assembleDebug` succeeded; 11.0 MB APK, not committed to git)
+**Device Status**: Installed & confirmed working on Samsung Galaxy S23
 
 **Known Limitations** (unchanged, same as before):
 - No restricted area filtering (OSM landuse/amenity tags)
@@ -55,9 +70,9 @@ Copy and paste this into the Claude Code prompt:
 ```
 @.claude\agents\orchestrator-agent.md
 
-**Status Update**: Route planner Algorithms F-I (self-intersection + backtracking prevention) + Samsung OneUI app icon completed and device-tested on 2026-06-30. All tests passed. Ready for next phase.
+**Status Update**: Algorithm J (SI escape passes) implemented 2026-07-07. Build compiled & installed on Samsung Galaxy S23. Branch: feature/no-self-intersection-routing (not yet merged). Manual device testing of self-intersection avoidance behavior awaiting user confirmation. Previous milestone: Algorithms F-I tested & verified on 2026-06-30.
 
-**Next Steps**: [User specifies feature, bug fix, or enhancement request]
+**Next Steps**: [User specifies next action: (1) test current build and report results, (2) proceed with different feature request, or (3) refine Algorithm J parameters]
 
 Example prompts:
 - "Add elevation profile support (load srtm3 data, display elevation gain in UI)"
@@ -86,8 +101,8 @@ The Orchestrator Agent (`.claude/agents/orchestrator-agent.md`) will:
 
 | Function | Purpose | Status |
 |---|---|---|
-| `generateRoute(waypoints, distance, ...)` | Main entry point for route generation | Active (Algorithms A-I) |
-| `calculateRoute()` | Iterates 10 scaling attempts, selects best route | Rewritten for three-category selection (Algorithm H) |
+| `generateRoute(waypoints, distance, ...)` | Main entry point for route generation | Active (Algorithms A-J) |
+| `calculateRoute()` | Main loop: 10 scaling attempts + SI escape passes if needed | Three-category selection (Algorithm H) + escape-pass retry mechanism (Algorithm J) |
 | `selectWaypointStrategy()` | Picks circular/detour/loop mode based on geometry | Active (Algorithm D) |
 | `generateCircularWaypoints()` | 4-5 vertices at enforced angular spread, sorted by angle | Implemented (Algorithm I-A) |
 | `generateDetourWaypoints()` | Two waypoints with early/late deviation + convergence guard | Implemented (Algorithm I-C) |
@@ -96,6 +111,7 @@ The Orchestrator Agent (`.claude/agents/orchestrator-agent.md`) will:
 | `computeSelfIntersectionFraction()` | Scores self-crossing via CCW + non-parallel near-crossings | Implemented (Algorithm F) |
 | `computeBacktrackingFraction()` | Scores bearing reversals > 150° | Implemented (Algorithm G) |
 | `routeViaGHWithHeadingFlag()` | Routes via GraphHopper, returns whether heading penalty was applied | Active (Algorithm E) |
+| `randomVariety()` | Generates random geometry parameters (extraction helper for Algorithms J) | New (Algorithm J helper) |
 
 ### Constants to Tune (if needed)
 
@@ -106,6 +122,8 @@ All tunable in `RouteService` companion object:
 - `SELF_INTERSECT_THRESHOLD_M = 100.0` — Near-crossing proximity (meters)
 - `PARALLEL_SCORE_GOOD = 0.15` — Anti-parallel early-return threshold (fraction)
 - `LOOP_MODE_THRESHOLD = 0.35` — Trigger loop mode if directDist < targetDist × 0.35
+- `SI_MAX_EXTRA_PASSES = 3` — Max number of SI escape passes (algorithm J) — tune to balance avoidance vs. user wait time
+- `SI_EXTRA_ATTEMPTS_PER_PASS = 5` — Scaling attempts per SI escape pass (algorithm J) — tune to balance thoroughness vs. computation
 
 ### Testing Checklist (before committing any changes)
 
@@ -211,12 +229,16 @@ The orchestrator automatically routes your request to the right agent(s) and coo
 
 ## Summary
 
-**You are here**: Algorithms F-I (self-intersection + backtracking prevention) fully implemented, tested, and verified on device. App icon redesigned for Samsung OneUI. Ready for production or further feature development.
+**You are here**: Algorithm J (SI escape passes) implemented on branch `feature/no-self-intersection-routing`. Build compiled & installed on Samsung Galaxy S23 (2026-07-07). Manual device testing of self-intersection avoidance is **pending user confirmation**. Previous milestone (Algorithms F-I) tested & verified on device (2026-06-30).
 
-**To continue**: Post your next request to the Orchestrator Agent (see "How to Resume Development" above). It will assess, route, and execute the work.
+**Next actions**: 
+1. Run manual device tests on current build to verify SI escape pass behavior (test scenarios provided in "Testing Checklist" below)
+2. If tests pass: merge to main, tag release
+3. If issues found: refine Algorithm J constants or geometry logic
+4. Or: post new feature/bug request to Orchestrator Agent for next phase
 
 ---
 
 **File**: `RESUME.md` (this file)  
-**Updated**: 2026-06-30  
-**Status**: Ready for next development cycle
+**Updated**: 2026-07-07  
+**Status**: Build ready for user testing; awaiting device test results before merge/release
