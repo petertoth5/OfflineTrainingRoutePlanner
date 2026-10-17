@@ -33,13 +33,17 @@
         android:contentDescription="Application initialization status" />
 
     <!-- Region Selector (initially hidden) -->
-    <Spinner
-        android:id="@+id/spinnerRegion"
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSelectRegion"
+        style="@style/Widget.Button.Outlined"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:minHeight="48dp"
+        android:text="Select region"
+        android:textSize="14sp"
         android:visibility="gone"
         android:layout_marginBottom="16dp"
-        android:contentDescription="Select region for data download" />
+        android:contentDescription="Choose a country or smaller sub-region to download" />
 
     <!-- Download Button (initially hidden) -->
     <com.google.android.material.button.MaterialButton
@@ -49,6 +53,7 @@
         android:layout_height="48dp"
         android:text="Download OSM Data"
         android:textSize="14sp"
+        android:enabled="false"
         android:visibility="gone"
         android:layout_marginBottom="16dp"
         android:contentDescription="Download OpenStreetMap data for the selected region" />

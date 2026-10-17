@@ -80,7 +80,8 @@ Or manually via GitHub web UI:
 - Colored waypoint markers (red start, green end, yellow mids) with improved visibility
 - Draggable markers with automatic route regeneration on move
 - Route variety: randomized shapes (not fixed equilateral triangles)
-- 14 European regions to choose from (Hungary default)
+- Choose a European country or a smaller sub-region (e.g. a German federal state) from Geofabrik's live index, with a bundled fallback list; Hungary is the default
+- Download confirmation shows the real size, free-space check, and a warning for large extracts; interrupted downloads resume
 - Running and Biking profiles with different default distances
 - Specify distance in meters with ±500m tolerance adjustment
 - Auto-generates route through all selected waypoints

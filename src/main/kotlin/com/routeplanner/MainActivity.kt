@@ -392,23 +392,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun changeRegion() {
-        val regionNames = RegionManager.regions.map { it.name }.toTypedArray()
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Select Region")
-            .setItems(regionNames) { _, which ->
-                AlertDialog.Builder(this)
-                    .setTitle("Download New Region?")
-                    .setMessage("Current OSM data will be deleted. Continue?")
-                    .setPositiveButton("Yes") { _, _ ->
-                        startActivity(Intent(this, SplashActivity::class.java))
-                        finish()
-                    }
-                    .setNegativeButton("No", null)
-                    .create()
-                    .show()
+        AlertDialog.Builder(this)
+            .setTitle("Change Region?")
+            .setMessage("The current map data will be deleted and you can pick and download another region. Continue?")
+            .setPositiveButton("Yes") { _, _ ->
+                if (DataManager(this).deleteOsmData()) {
+                    startActivity(Intent(this, SplashActivity::class.java))
+                    finish()
+                } else {
+                    Toast.makeText(this, "Failed to delete data file", Toast.LENGTH_SHORT).show()
+                }
             }
-            .create()
-        dialog.show()
+            .setNegativeButton("No", null)
+            .show()
     }
 
     private fun deleteOsmData() {

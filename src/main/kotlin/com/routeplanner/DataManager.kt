@@ -6,7 +6,7 @@ import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.InterruptedIOException
+import java.net.HttpURLConnection
 import java.net.URL
 
 class DataManager(private val context: Context) {
@@ -15,6 +15,8 @@ class DataManager(private val context: Context) {
         private const val OSM_DATA_FILE = "map.osm.pbf"
         private const val PREFS_NAME = "route_planner_prefs"
         private const val PREFS_CURRENT_REGION = "current_region"
+        private const val PREFS_PART_REGION = "part_region"
+        private const val SPACE_FACTOR = 4L // pbf + graph (~2-3x pbf) + headroom
     }
 
     private val dataDir = File(context.cacheDir, "osm_data")
@@ -29,17 +31,39 @@ class DataManager(private val context: Context) {
     fun hasOsmData(): Boolean = getOsmDataFile().exists()
 
     fun getCurrentRegion(): Region {
-        val regionName = prefs.getString(PREFS_CURRENT_REGION, null)
-        return if (regionName != null) {
-            RegionManager.getRegionByName(regionName) ?: RegionManager.getDefaultRegion()
-        } else {
-            RegionManager.getDefaultRegion()
-        }
+        val key = prefs.getString(PREFS_CURRENT_REGION, null)
+        return (key?.let { RegionManager.getRegionByIdOrName(it) }) ?: RegionManager.getDefaultRegion()
     }
 
     fun setCurrentRegion(region: Region) {
-        prefs.edit().putString(PREFS_CURRENT_REGION, region.name).apply()
+        prefs.edit().putString(PREFS_CURRENT_REGION, region.id).apply()
     }
+
+    /** Size of the extract in bytes from a HEAD request, or -1 if unknown. Blocking. */
+    fun fetchRemoteSize(region: Region): Long {
+        val url = region.url ?: return -1
+        return try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = "HEAD"
+                conn.connectTimeout = 15000
+                conn.readTimeout = 15000
+                if (conn.responseCode == HttpURLConnection.HTTP_OK) conn.contentLengthLong else -1
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            -1
+        }
+    }
+
+    /**
+     * Free space needed for the download plus the GraphHopper graph built from it
+     * (the graph is typically 2-3x the size of the pbf).
+     */
+    fun requiredSpaceBytes(pbfBytes: Long): Long = pbfBytes * SPACE_FACTOR
+
+    fun freeSpaceBytes(): Long = dataDir.freeSpace
 
     fun downloadOsmData(
         region: Region,
@@ -50,104 +74,116 @@ class DataManager(private val context: Context) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val file = getOsmDataFile()
+                val part = File(dataDir, "$OSM_DATA_FILE.part")
 
-                // Validate URL
-                if (region.url.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        onError("Invalid region URL")
-                    }
+                val regionUrl = region.url
+                if (regionUrl.isNullOrEmpty()) {
+                    withContext(Dispatchers.Main) { onError("Invalid region URL") }
                     return@launch
                 }
 
-                val url = try {
-                    URL(region.url)
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        onError("Invalid URL format: ${e.message}")
-                    }
-                    return@launch
-                }
+                // A partial file can only be resumed for the same region
+                if (prefs.getString(PREFS_PART_REGION, null) != region.id) part.delete()
+                prefs.edit().putString(PREFS_PART_REGION, region.id).apply()
 
-                val connection = try {
-                    url.openConnection().apply {
-                        connectTimeout = 30000 // 30 seconds
-                        readTimeout = 30000
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        onError("Connection error: ${e.message}")
-                    }
-                    return@launch
-                }
-
-                val fileLength = connection.contentLength
-                if (fileLength <= 0) {
-                    withContext(Dispatchers.Main) {
-                        onError("Invalid file size from server")
-                    }
-                    return@launch
-                }
-
-                // Check available space (rough estimate: need 2x file size)
-                val availableSpace = file.parentFile?.freeSpace ?: 0
-                if (availableSpace < fileLength * 2) {
-                    withContext(Dispatchers.Main) {
-                        onError("Not enough storage space (need ~${fileLength / (1024*1024*1024)} GB)")
-                    }
-                    return@launch
+                var existing = if (part.exists()) part.length() else 0L
+                val connection = (URL(regionUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 30000
+                    readTimeout = 30000
+                    if (existing > 0) setRequestProperty("Range", "bytes=$existing-")
                 }
 
                 try {
-                    url.openStream().use { input ->
-                        FileOutputStream(file).use { output ->
-                            val data = ByteArray(8192)
-                            var downloaded = 0L
-                            var count: Int
+                    val code = connection.responseCode
+                    if (code == HttpURLConnection.HTTP_OK) {
+                        existing = 0L // Server ignored the range request: start over
+                    } else if (code != HttpURLConnection.HTTP_PARTIAL) {
+                        if (code == 416) part.delete() // Stale partial file
+                        withContext(Dispatchers.Main) { onError("Server returned HTTP $code") }
+                        return@launch
+                    }
 
-                            while (input.read(data).also { count = it } != -1) {
-                                downloaded += count
-                                output.write(data, 0, count)
+                    val remaining = connection.contentLengthLong
+                    if (remaining <= 0) {
+                        withContext(Dispatchers.Main) { onError("Invalid file size from server") }
+                        return@launch
+                    }
+                    val totalLength = existing + remaining
 
-                                val progress = ((downloaded * 100) / fileLength).toInt()
-                                withContext(Dispatchers.Main) { onProgress(progress) }
+                    val needed = requiredSpaceBytes(totalLength) - existing
+                    if (dataDir.freeSpace < needed) {
+                        withContext(Dispatchers.Main) {
+                            onError("Not enough storage space (need ~${needed / (1024 * 1024)} MB free). Try a smaller region.")
+                        }
+                        return@launch
+                    }
+
+                    try {
+                        connection.inputStream.use { input ->
+                            FileOutputStream(part, existing > 0).use { output ->
+                                val data = ByteArray(8192)
+                                var downloaded = existing
+                                var lastProgress = -1
+                                var count: Int
+
+                                while (input.read(data).also { count = it } != -1) {
+                                    downloaded += count
+                                    output.write(data, 0, count)
+
+                                    val progress = ((downloaded * 100) / totalLength).toInt()
+                                    if (progress != lastProgress) {
+                                        lastProgress = progress
+                                        withContext(Dispatchers.Main) { onProgress(progress) }
+                                    }
+                                }
                             }
                         }
+                    } catch (e: IOException) {
+                        // Keep the .part file so the next attempt can resume
+                        withContext(Dispatchers.Main) {
+                            onError("Download interrupted - tap Download to resume")
+                        }
+                        return@launch
                     }
-                } catch (e: InterruptedIOException) {
-                    file.delete()
-                    withContext(Dispatchers.Main) {
-                        onError("Download interrupted")
+
+                    if (part.length() != totalLength) {
+                        part.delete()
+                        withContext(Dispatchers.Main) { onError("Downloaded file incomplete or corrupted") }
+                        return@launch
                     }
-                    return@launch
+                } finally {
+                    connection.disconnect()
                 }
 
-                // Verify file
-                if (!file.exists() || file.length() < fileLength * 0.9) { // Allow 10% tolerance
-                    file.delete()
-                    withContext(Dispatchers.Main) {
-                        onError("Downloaded file incomplete or corrupted")
-                    }
+                // The routing graph is built from the pbf: a graph of the previous region must not be reused
+                clearGraphCache()
+                file.delete()
+                if (!part.renameTo(file)) {
+                    part.delete()
+                    withContext(Dispatchers.Main) { onError("Could not store downloaded file") }
                     return@launch
                 }
+                prefs.edit().remove(PREFS_PART_REGION).apply()
 
                 setCurrentRegion(region)
-                withContext(Dispatchers.Main) {
-                    onComplete()
-                }
+                withContext(Dispatchers.Main) { onComplete() }
             } catch (e: SecurityException) {
-                withContext(Dispatchers.Main) {
-                    onError("Permission denied: cannot write file")
-                }
+                withContext(Dispatchers.Main) { onError("Permission denied: cannot write file") }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    onError(e.message ?: "Download failed")
-                }
+                withContext(Dispatchers.Main) { onError(e.message ?: "Download failed") }
             }
         }
     }
 
+    private fun clearGraphCache() {
+        File(context.cacheDir, "gh").deleteRecursively()
+    }
+
     fun deleteOsmData(): Boolean {
         return try {
+            clearGraphCache()
+            File(dataDir, "$OSM_DATA_FILE.part").delete()
+            prefs.edit().remove(PREFS_PART_REGION).apply()
             getOsmDataFile().delete()
         } catch (e: Exception) {
             e.printStackTrace()

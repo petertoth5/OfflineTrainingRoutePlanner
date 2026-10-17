@@ -137,7 +137,7 @@ class RouteService(private val context: Context) {
             }
             ""
         } catch (e: OutOfMemoryError) {
-            val msg = "Out of memory: region too large (${e.message})"
+            val msg = "Out of memory: region too large (${e.message}). Delete the data and pick a smaller sub-region."
             android.util.Log.e("RouteService", msg, e)
             msg
         } catch (e: Exception) {
@@ -348,7 +348,7 @@ class RouteService(private val context: Context) {
                 Pair(null, "Cannot generate route through the selected waypoints.")
             }
         } catch (e: OutOfMemoryError) {
-            Pair(null, "Out of memory: region data too large")
+            Pair(null, "Out of memory: region data too large - pick a smaller sub-region")
         } catch (e: Exception) {
             Pair(null, "Routing error: ${e.message}")
         }
@@ -604,7 +604,7 @@ class RouteService(private val context: Context) {
                 else -> Pair(null, "Cannot generate route. No roads found near waypoints.")
             }
         } catch (e: OutOfMemoryError) {
-            Pair(null, "Out of memory: region data too large")
+            Pair(null, "Out of memory: region data too large - pick a smaller sub-region")
         } catch (e: Exception) {
             Pair(null, "Routing error: ${e.message}")
         }
