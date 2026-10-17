@@ -176,7 +176,7 @@ The main activity uses a vertical LinearLayout with two major sections:
 The splash screen displays initialization progress:
 - App title ("Route Planner") in 32sp headline
 - Status text (initialization progress)
-- Region selector (when visible)
+- Region selector button (opens the country → sub-region picker; when visible)
 - Download button (Material Design styled, primary blue)
 - Progress bar (blue-tinted, matches theme)
 - Status percentage text
@@ -269,17 +269,18 @@ All changes are in `res/` (layouts, colors, styles) and `res/mipmap/` (icons). *
 ```
 src/main/kotlin/com/routeplanner/
 ├── MainActivity.kt           # Main UI, map, route generation, GPX export
-├── SplashActivity.kt         # First launch, region select, OSM download
+├── SplashActivity.kt         # First launch, region select, size confirmation, OSM download
+├── RegionPicker.kt           # Drill-down country → sub-region AlertDialog chooser
 ├── RouteService.kt           # GraphHopper engine, route gen
 ├── DataManager.kt            # OSM download/storage/deletion, SharedPreferences
-├── RegionManager.kt          # 14 European regions with Geofabrik URLs
+├── RegionManager.kt          # Region tree: Geofabrik index (cached) + bundled fallback
 ├── MapManager.kt             # osmdroid wrapper: markers, polylines, zoom
 ├── MapTouchOverlay.kt        # Tap → lat/lng callback via osmdroid Overlay
 ├── MarkerIconGenerator.kt    # Runtime marker icon bitmap generation (colored circles)
 └── Route.kt                  # Data class: points, distance, hasLoops, toGpx()
 res/
 ├── layout/activity_main.xml     # Map + profile toggle + controls
-├── layout/activity_splash.xml   # Region spinner + download progress
+├── layout/activity_splash.xml   # Region button + download progress
 ├── drawable/ic_launcher_foreground.xml   # App icon foreground vector
 ├── drawable/ic_launcher_background.xml   # App icon background (#1C1C1E)
 ├── mipmap-anydpi-v26/ic_launcher.xml     # Adaptive icon (API 26+)
@@ -361,7 +362,7 @@ packagingOptions { resources { excludes += setOf(
 ## Core Components
 
 ### SplashActivity
-Checks `DataManager.hasOsmData()`. If missing → region spinner + download button → Geofabrik download → launch `MainActivity`.
+Checks `DataManager.hasOsmData()`. If missing → loads the region catalogue in the background (`RegionManager.loadCatalogue`) → "Select region" button opens `RegionPicker` → Download button looks up the real size (`DataManager.fetchRemoteSize`, HEAD) and shows a confirm dialog (size, free space needed, low-storage and >300 MB memory warnings) → Geofabrik download → launch `MainActivity`.
 
 ### MainActivity
 
@@ -489,10 +490,16 @@ All waypoints are real GH routing calls → all segments follow actual roads.
 - GH graph: `cacheDir/gh/`
 - Preferences: `route_planner_prefs`
 - `onProgress` dispatched via `withContext(Dispatchers.Main)`
-- Download: `URL.openStream()`, 30s timeout, 2× space check, ≥90% size verification
+- Download: `HttpURLConnection`, 30s timeout, 64-bit sizes (`contentLengthLong`), written to `map.osm.pbf.part` and renamed on success; resumes via HTTP `Range` if the `.part` belongs to the same region (pref `part_region`); exact-size verification
+- Space check: free space must be ≥ `SPACE_FACTOR` (4) × pbf size (pbf + GraphHopper graph ≈ 2–3× + headroom)
+- Current region stored as the Geofabrik path id (pref `current_region`, e.g. `europe/germany/bayern`); legacy plain names still resolve
+- `clearGraphCache()` wipes `cacheDir/gh/` after a new region download and in `deleteOsmData()` — a graph built from another region must never be reused
 
 ### RegionManager
-Static object, 14 European regions. Default: Hungary (~190MB). Add regions by appending to `regions` list.
+Static object holding a tree of `Region(id, name, parentId, url, sizeApprox)`. `id` is the Geofabrik path without `-latest.osm.pbf` (e.g. `europe/germany/bayern`); `parentId == null` marks a top-level country; `url == null` marks a grouping node.
+- `loadCatalogue(context)` (blocking, call off the main thread): downloads `index-v1-nogeom.json`, keeps the Europe subtree (`parseIndex`), caches it in `filesDir/region_index.json` for 7 days; falls back to the stale cache, then to the `bundled` list (13 countries + all German states).
+- Helpers: `childrenOf`, `hasChildren`, `getRegionById`, `getRegionByIdOrName` (legacy prefs), `getDefaultRegion()` (Hungary, ~190MB — Geofabrik has no Hungarian sub-regions).
+- `LARGE_REGION_BYTES` (300 MB) triggers the out-of-memory warning in the download confirm dialog.
 
 ### MapManager
 osmdroid wrapper. Accepts `LatLng`, converts to `GeoPoint` internally.
@@ -543,7 +550,8 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 
 | | Path |
 |-|------|
-| OSM data | `cacheDir/osm_data/map.osm.pbf` |
+| OSM data | `cacheDir/osm_data/map.osm.pbf` (`.part` suffix while downloading) |
+| Region index cache | `filesDir/region_index.json` |
 | GH graph | `cacheDir/gh/` |
 | GH lock | `cacheDir/gh/lock` (deleted on init) |
 | SharedPreferences | `route_planner_prefs` |
@@ -554,7 +562,7 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 
 ## Common Modifications
 
-**Add region**: append to `RegionManager.regions` with Geofabrik PBF URL.
+**Add region**: normally nothing — new Geofabrik regions appear via the live index. For offline fallback add a `country(...)`/`state(...)` entry to `RegionManager.bundled`.
 
 **Change routing profiles or weighting**: edit profiles in `RouteService.initializeGraphHopperSync()` + **bump `profileFingerprint`** string. Do NOT upgrade GraphHopper past 6.0.
 
@@ -577,7 +585,7 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 | No restricted area filtering | Load OSM landuse/amenity tags |
 | No elevation support | Add elevation data source |
 | No offline tile cache | Pre-bundle or download tile layer |
-| Large regions may OOM even with largeHeap | Implement sub-region selection |
+| ~~Large regions may OOM even with largeHeap~~ | **MITIGATED** — sub-region selection (Geofabrik states/counties) + size/memory warning. Still possible for very large extracts; Hungary only available as a whole country; no multi-region or custom-area support (phases 3–4 of the sub-region plan) |
 
 ---
 
@@ -587,8 +595,18 @@ Export as GPX → ACTION_CREATE_DOCUMENT picker (user chooses folder + filename)
 2. If you change GH profiles or weighting, **bump `profileFingerprint`** in `RouteService.initializeGraphHopperSync()`.
 3. Never upgrade GraphHopper past 6.0 — see Dependencies constraint above.
 4. Never call `mapManager.clear()` after route display — use `mapManager.clearRoute()`.
+5. Never keep `cacheDir/gh/` across a region change — use `DataManager` (`clearGraphCache()`) so a stale graph is not loaded.
 
-**Last Updated**: 2026-07-07 — Self-intersection escape passes (algorithm J) implemented. When main 10-attempt loop finds only self-crossing in-tolerance routes (Category B), new SI escape mechanism retries with up to `SI_MAX_EXTRA_PASSES` (3) fresh `randomVariety()` sets, each running `SI_EXTRA_ATTEMPTS_PER_PASS` (5) scaling attempts. Early return if any escape pass finds Category A (clean) route; otherwise fall back to best Category B. Extracted `randomVariety()` helper ensures main loop and escape passes draw from identical geometry parameter ranges. Build compiled and installed on Samsung Galaxy S23 (Android 14+); device-level testing confirmed by user 2026-07-07 — merged to `main` and released as **v1.3.0** on GitHub (bundled with the One UI icon redesign); release APK re-downloaded and clean-installed to verify. **Previous milestone (2026-06-30)**: Refined route planning (algorithms F–I) tested & verified on Samsung Galaxy S24+. No self-intersections, no U-turns, stable geometry, early-return optimization confirmed. New `internal` functions: `computeSelfIntersectionFraction()` (algorithm F), `computeBacktrackingFraction()` (algorithm G), `reflectAcrossLine()` (algorithm I-C helper). `calculateRoute()` implements three-category selection (A clean / B crossed / C out-of-tolerance). App icon redesigned: Samsung OneUI style. Builds clean.
+## Recent Changes
+
+| Date | Category | Change | Impact |
+|------|----------|--------|--------|
+| 2026-10-17 | Feature | Sub-region selection: hierarchical Geofabrik region catalogue, `RegionPicker`, real-size confirm dialog, storage/memory warnings, resumable `.part` downloads | Much smaller downloads and fewer out-of-memory failures; **not yet compiled or device-tested** (branch `feature/sub-region-selection`) |
+| 2026-10-17 | Fix | "Change Region" now deletes old data; GH graph cache cleared on region change | New region no longer loads the previous region's graph |
+
+**Last Updated**: 2026-10-17 — Sub-region selection (phases 1–2) implemented on branch `feature/sub-region-selection`: hierarchical `RegionManager` (Geofabrik index + bundled fallback), `RegionPicker`, size/storage/memory confirm dialog, resumable downloads, graph-cache wipe on region change, "Change Region" fix. Written without an Android SDK — awaiting build and device test; not merged, version not bumped.
+
+Previous: 2026-07-07 — Self-intersection escape passes (algorithm J) implemented. When main 10-attempt loop finds only self-crossing in-tolerance routes (Category B), new SI escape mechanism retries with up to `SI_MAX_EXTRA_PASSES` (3) fresh `randomVariety()` sets, each running `SI_EXTRA_ATTEMPTS_PER_PASS` (5) scaling attempts. Early return if any escape pass finds Category A (clean) route; otherwise fall back to best Category B. Extracted `randomVariety()` helper ensures main loop and escape passes draw from identical geometry parameter ranges. Build compiled and installed on Samsung Galaxy S23 (Android 14+); device-level testing confirmed by user 2026-07-07 — merged to `main` and released as **v1.3.0** on GitHub (bundled with the One UI icon redesign); release APK re-downloaded and clean-installed to verify. **Previous milestone (2026-06-30)**: Refined route planning (algorithms F–I) tested & verified on Samsung Galaxy S24+. No self-intersections, no U-turns, stable geometry, early-return optimization confirmed. New `internal` functions: `computeSelfIntersectionFraction()` (algorithm F), `computeBacktrackingFraction()` (algorithm G), `reflectAcrossLine()` (algorithm I-C helper). `calculateRoute()` implements three-category selection (A clean / B crossed / C out-of-tolerance). App icon redesigned: Samsung OneUI style. Builds clean.
 
 Previous: 2026-06-30 — Anti-parallel route planning (algorithms A–E) implemented in `RouteService.kt`. New functions: `computeAntiParallelFraction()` (O(m²) overlap scorer, internal), `enforceAngularSpread()` (min angular separation, internal), `generateCircularWaypointsForLoop()` (near-circular loop mode), `selectWaypointStrategy()` (mode dispatch), `routeViaGHWithHeadingFlag()` (returns whether heading penalty was applied; `routeViaGH()` now delegates to it). `calculateRoute()` scaling loop replaced single best-by-delta tracking with two-stage selection (bestWithinTolerance by anti-parallel score with early-return at ≤0.15; bestOutOfTolerance by distance delta) and de-prioritises no-heading routes (+0.15). `RouteVariety` ranges reformed: circular vertex count 3–5→4–5, angle jitter ±0.20→±0.15, detour fracs 0.28–0.40/0.60–0.72→0.12–0.25/0.75–0.88, detour offset factors 0.85–1.15→0.70–1.00. Tunable constants in `RouteService` companion object. No `profileFingerprint` bump (geometry only, profiles unchanged). Compiles clean (`compileDebugKotlin` BUILD SUCCESSFUL). NOTE: no JVM/instrumentation test harness exists yet (no `src/test`, no JUnit dep) and `LatLng` is an Android framework type — unit tests for the two `internal` scorer functions require Build/Integrator to add a test sourceSet (likely `androidTest`/Robolectric). Pending device testing (Deploy Agent).
 

@@ -1,10 +1,18 @@
 # Resume Development — OfflineTrainingRoutePlanner
 
-**Last Checkpoint**: 2026-07-07 (Commit: SI escape passes — algorithm J)
+**Last Checkpoint**: 2026-10-17 (Branch `feature/sub-region-selection`: sub-region selection, phases 1–2 — UNTESTED)
 
 ---
 
 ## What Was Done
+
+### Sub-Region Selection (phases 1–2) — 2026-10-17, branch `feature/sub-region-selection`, NOT merged
+- **Problem**: country-level downloads (65 MB–2.7 GB) were too big and caused out-of-memory failures
+- **Phase 1**: `RegionManager` is now a tree (`Region(id, name, parentId, url, sizeApprox)`) loaded from Geofabrik's `index-v1-nogeom.json` (Europe subtree, cached 7 days in `filesDir/region_index.json`), with a bundled fallback (13 countries + German states). New `RegionPicker` drill-down dialog; `SplashActivity` uses a "Select region" button instead of a spinner. Region persisted by path id (legacy names still resolve).
+- **Phase 2**: confirm dialog with real size (HEAD request), free-space check (4× pbf), warning above 300 MB; OOM messages suggest a smaller sub-region; resumable downloads via `map.osm.pbf.part` + HTTP Range; 64-bit sizes (old code overflowed above 2 GB).
+- **Bug fixes**: "Change Region" now deletes old data (it previously bounced back to the map); `cacheDir/gh/` graph cache is wiped on region change/delete (a stale graph from the previous region could be loaded).
+- **Testing status**: ⚠ Written without an Android SDK — **never compiled, never run**. Geofabrik index parser written from the documented format, not verified against the live file. TODO: `./gradlew assembleDebug`, check picker shows more than the bundled list, test resume (interrupt + retry), test Change Region with a different region.
+- **Not done**: phase 3 (multiple regions kept at once) and phase 4 (custom area / BBBike). `build.gradle.kts` still says versionName 1.1.0 although docs say v1.3.0 was released — version not bumped.
 
 ### Algorithm J: SI Escape Passes (Self-Intersection Avoidance Retry)
 - **Problem**: Main 10-attempt loop sometimes converges to a geometry set that always self-crosses (Category B), yielding no clean (Category A) routes even with proportional scaling
@@ -41,7 +49,7 @@
 
 ## Current State
 
-**Branch**: `main` (feature branch `feature/no-self-intersection-routing` merged 2026-07-07 and deleted)
+**Branch**: `main` is at v1.3.0; `feature/sub-region-selection` (pushed, unmerged, untested) holds the sub-region work
 
 **Key Files Modified:**
 - `src/main/kotlin/com/routeplanner/RouteService.kt` — Algorithms A–J implemented; Algorithm J SI escape passes added to `calculateRoute()` (~lines 502–582); `randomVariety()` helper extracted (~line 681)
@@ -57,7 +65,7 @@
 - No restricted area filtering (OSM landuse/amenity tags)
 - No elevation support
 - No offline tile cache (pre-bundled or downloadable)
-- Large regions may OOM even with `largeHeap` (would need sub-region selection)
+- Large regions may still OOM even with `largeHeap` — mitigated by sub-region selection (branch `feature/sub-region-selection`, untested); Hungary has no sub-regions on Geofabrik
 
 ---
 
@@ -159,6 +167,8 @@ Examples:
 
 Based on known limitations and user feedback, consider:
 
+0. **Sub-region phases 3–4** (multiple regions / custom area) — see sub-region plan above
+
 1. **Elevation Support** (easy complexity)
    - Source: SRTM3 (90m resolution, free)
    - Display: Show elevation gain in route details, plot elevation profile
@@ -238,5 +248,5 @@ The orchestrator automatically routes your request to the right agent(s) and coo
 ---
 
 **File**: `RESUME.md` (this file)  
-**Updated**: 2026-07-07  
-**Status**: v1.3.0 released; ready for next development cycle
+**Updated**: 2026-10-17  
+**Status**: v1.3.0 released; sub-region selection (phases 1–2) on feature branch awaiting build + device test
